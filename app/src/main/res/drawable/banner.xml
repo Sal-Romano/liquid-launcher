@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 Leanback banner: a glass tile on a dark gradient. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:pathData="M0,0h320v180h-320z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="320" android:endY="180">
+                <item android:offset="0" android:color="#FF1B2A4A" />
+                <item android:offset="1" android:color="#FF0B0F1A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#33FFFFFF" android:strokeColor="#99FFFFFF" android:strokeWidth="1.5"
+        android:pathData="M110,50 h100 a20,20 0 0 1 20,20 v40 a20,20 0 0 1 -20,20 h-100 a20,20 0 0 1 -20,-20 v-40 a20,20 0 0 1 20,-20 z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M148,78 h24 v4 h-24 z M148,88 h24 v4 h-24 z M148,98 h16 v4 h-16 z" />
+</vector>

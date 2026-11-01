@@ -1,0 +1,9 @@
+<resources>
+    <!-- Black behind everything, no action bar, no system window animation: the first frame
+         after a Home press must already be the wallpaper, not a white flash. -->
+    <style name="Theme.Glass" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+</resources>
