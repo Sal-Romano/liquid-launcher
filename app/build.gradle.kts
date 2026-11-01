@@ -61,4 +61,5 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.tv.material)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.graphics.shapes)
 }

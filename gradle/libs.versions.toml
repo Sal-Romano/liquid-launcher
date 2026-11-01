@@ -14,6 +14,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 coreKtx = "1.19.1"
 serializationJson = "1.12.0"
+graphicsShapes = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,6 +30,8 @@ androidx-compose-animation = { group = "androidx.compose.animation", name = "ani
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
+# Squircle (rounded-polygon) shapes for the glass tiles.
+androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
