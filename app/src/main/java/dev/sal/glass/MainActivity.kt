@@ -3,6 +3,7 @@ package dev.sal.glass
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
@@ -27,6 +28,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A launcher never finishes on Back, whatever state it is in; the screen decides what Back
+        // means (hide the dock, close an overlay). On the TV Fire OS never delivers Back out of a
+        // home app anyway; this covers the emulator and any future non-home use.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = Unit
+        })
         setContent { HomeScreen(engine, store, wake) }
     }
 
