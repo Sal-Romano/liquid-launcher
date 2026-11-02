@@ -26,6 +26,7 @@ class GlassRenderer(private val requestRender: () -> Unit) {
     @Volatile private var pendingSharp: Bitmap? = null
     @Volatile private var pendingFrost: Bitmap? = null
     @Volatile var dark = 0f
+    @Volatile var refraction = true
 
     private val u = HashMap<String, Int>()
 
@@ -84,13 +85,15 @@ class GlassRenderer(private val requestRender: () -> Unit) {
             GLES30.glVertexAttribPointer(aPos, 2, GLES30.GL_FLOAT, false, 0, 0)
             GLES30.glUniform4f(u["uRect"]!!, r.center.x, r.center.y, r.width / 2f, r.height / 2f)
             GLES30.glUniform1f(u["uRadius"]!!, p.cornerPx)
+            // Tiles: a clear bevel ring around a well-frosted centre, so icons stay legible on busy
+            // photos. Sheets: the lens lives at the edge only; the interior is near-opaque frost.
             val (bevel, thick, frost) = when (p.kind) {
-                GlassVariant.Tile -> Triple(minOf(r.height * 0.22f, 22f), 9f, 0.75f)
-                GlassVariant.Pill -> Triple(minOf(r.height * 0.3f, 12f), 5f, 0.85f)
-                GlassVariant.Sheet -> Triple(26f, 10f, 0.92f)
+                GlassVariant.Tile -> Triple(minOf(r.height * 0.20f, 20f), 8f, 0.90f)
+                GlassVariant.Pill -> Triple(minOf(r.height * 0.3f, 12f), 4f, 0.92f)
+                GlassVariant.Sheet -> Triple(18f, 4f, 0.97f)
             }
-            GLES30.glUniform1f(u["uBevel"]!!, bevel)
-            GLES30.glUniform1f(u["uThick"]!!, thick)
+            GLES30.glUniform1f(u["uBevel"]!!, if (refraction) bevel else 1f)
+            GLES30.glUniform1f(u["uThick"]!!, if (refraction) thick else 0f)
             GLES30.glUniform1f(u["uLift"]!!, p.lift)
             GLES30.glUniform1f(u["uAlpha"]!!, p.alpha)
             GLES30.glUniform1f(u["uFrostMix"]!!, frost)

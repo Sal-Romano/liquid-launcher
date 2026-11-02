@@ -16,11 +16,12 @@ import androidx.compose.ui.viewinterop.AndroidView
  * by the host while something over the glass animates, so the backdrop under overlays stays fresh.
  */
 @Composable
-fun GlassLayer(sharp: Bitmap?, frost: Bitmap?, dark: Float, tick: Long, modifier: Modifier = Modifier) {
+fun GlassLayer(sharp: Bitmap?, frost: Bitmap?, dark: Float, tick: Long, refraction: Boolean = true, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val view = remember { GlassTextureView(context) }
     LaunchedEffect(sharp, frost) { view.setWallpaper(sharp, frost) }
     LaunchedEffect(dark) { view.setDark(dark) }
+    LaunchedEffect(refraction) { view.setRefraction(refraction) }
     LaunchedEffect(tick) { view.requestRender() }
     DisposableEffect(Unit) {
         GlassPanels.onChanged = { view.requestRender() }

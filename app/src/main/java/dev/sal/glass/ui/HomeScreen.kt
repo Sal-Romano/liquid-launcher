@@ -32,6 +32,7 @@ import dev.sal.glass.config.ActionTile
 import dev.sal.glass.config.AppTile
 import dev.sal.glass.config.ClockSize
 import dev.sal.glass.config.ConfigStore
+import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
 import dev.sal.glass.config.Tile
@@ -136,7 +137,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 },
         ) {
             WallpaperLayer(engine, config.wallpaper.kenBurns)
-            GlassLayer(engine.current?.image, engine.current?.thumb, dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f, tick = glassTick)
+            GlassLayer(engine.current?.image, engine.current?.thumb, dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f, tick = glassTick, refraction = config.glass.mode == GlassMode.Refraction)
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
@@ -197,6 +198,9 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
         SettingRow("Hide dock after", listOf("5 s", "10 s", "20 s", "Never"),
             { idle.indexOf(store.config.dock.idleHideSec).coerceAtLeast(0) },
             { i -> store.update { c -> c.copy(dock = c.dock.copy(idleHideSec = idle[i])) } }),
+        SettingRow("Glass", listOf("Refraction", "Frosted only"),
+            { store.config.glass.mode.ordinal },
+            { i -> store.update { c -> c.copy(glass = c.glass.copy(mode = GlassMode.entries[i])) } }),
         SettingRow("Rescan wallpapers", listOf("Now"), { 0 }, { engine.rescan() }),
     )
 }

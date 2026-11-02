@@ -31,6 +31,8 @@ class GlassTextureView(context: Context) : TextureView(context), TextureView.Sur
 
     fun setWallpaper(sharp: Bitmap?, frost: Bitmap?) { renderer.setWallpaper(sharp, frost); requestRender() }
     fun setDark(d: Float) { renderer.dark = d; requestRender() }
+    /** Frosted-only mode: no bevel, no bend. For the TV if the refraction costs too much. */
+    fun setRefraction(on: Boolean) { renderer.refraction = on; requestRender() }
 
     fun requestRender() {
         dirty.set(true)

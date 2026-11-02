@@ -30,12 +30,16 @@ object GlassPanels {
         if (p == null) {
             panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha)
         } else {
-            if (p.rect == rect && p.cornerPx == cornerPx && p.kind == kind && p.lift == lift && p.alpha == alpha) return
+            if (p.kind == kind && p.cornerPx == cornerPx && near(p.rect, rect) && kotlin.math.abs(p.lift - lift) < 0.01f && kotlin.math.abs(p.alpha - alpha) < 0.01f) return
             p.rect = rect; p.cornerPx = cornerPx; p.kind = kind; p.lift = lift; p.alpha = alpha
         }
         version++
         onChanged?.invoke()
     }
+
+    private fun near(a: Rect, b: Rect) =
+        kotlin.math.abs(a.left - b.left) < 0.5f && kotlin.math.abs(a.top - b.top) < 0.5f &&
+            kotlin.math.abs(a.right - b.right) < 0.5f && kotlin.math.abs(a.bottom - b.bottom) < 0.5f
 
     @Synchronized
     fun remove(id: Any) {

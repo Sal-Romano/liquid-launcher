@@ -104,7 +104,7 @@ void main() {
 
     // Tint: milky white over dark scenes, smoked over bright ones.
     vec3 tint = mix(vec3(1.0), vec3(0.08, 0.09, 0.12), uDark);
-    float tintAmt = mix(0.18, 0.30, uDark) * (1.0 - ring * 0.5);
+    float tintAmt = mix(0.26, 0.34, uDark) * (1.0 - ring * 0.6);
     vec3 col = mix(back, tint, tintAmt);
 
     // Fresnel rim and a directional specular along the bevel.

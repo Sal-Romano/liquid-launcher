@@ -90,6 +90,12 @@ enum class HourFormat { System, H12, H24 }
 data class ClockConfig(val size: ClockSize = ClockSize.M, val hourFormat: HourFormat = HourFormat.System)
 
 @Serializable
+enum class GlassMode { Refraction, Frosted }
+
+@Serializable
+data class GlassConfig(val mode: GlassMode = GlassMode.Refraction)
+
+@Serializable
 data class DockConfig(
     /** 0 = never hide. */
     val idleHideSec: Int = 10,
@@ -103,6 +109,7 @@ data class LauncherConfig(
     val wallpaper: WallpaperConfig = WallpaperConfig(),
     val clock: ClockConfig = ClockConfig(),
     val dock: DockConfig = DockConfig(),
+    val glass: GlassConfig = GlassConfig(),
 ) {
     val dockTiles: List<Tile> get() = rows.firstOrNull()?.tiles ?: emptyList()
 }
