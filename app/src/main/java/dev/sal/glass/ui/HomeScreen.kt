@@ -188,7 +188,7 @@ private fun dockLuma(thumb: android.graphics.Bitmap): Float {
     var y = y0
     while (y <= y1) { var x = thumb.width / 5; while (x < thumb.width * 4 / 5) { val c = thumb.getPixel(x, y); sum += (0.2126f * ((c shr 16) and 0xFF) + 0.7152f * ((c shr 8) and 0xFF) + 0.0722f * (c and 0xFF)) / 255f; n++; x += 4 }; y += 3 }
     val l = if (n == 0) 0.3f else sum / n
-    return ((l - 0.5f) / 0.15f).coerceIn(0f, 1f)
+    return ((l - 0.45f) / 0.15f).coerceIn(0f, 1f)
 }
 
 private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {

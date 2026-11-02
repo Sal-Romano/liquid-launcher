@@ -38,7 +38,7 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
 
     fun onSurfaceCreated() {
         program = link(GlassShader.VERTEX, GlassShader.FRAGMENT)
-        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uFrostMix", "uDark")) {
+        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uLod", "uDeepMix", "uTint", "uDark", "uMag")) {
             u[name] = GLES30.glGetUniformLocation(program, name)
         }
         GLES30.glGenTextures(4, tex, 0)
@@ -56,8 +56,8 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
     }
 
     fun onDrawFrame() {
-        pendingA?.let { p -> p.sharp?.let { upload(tex[0], it) }; p.deep?.let { upload(tex[1], it) }; lastA = p; pendingA = null }
-        pendingB?.let { p -> p.sharp?.let { upload(tex[2], it) }; p.deep?.let { upload(tex[3], it) }; lastB = p; pendingB = null }
+        pendingA?.let { p -> p.sharp?.let { upload(tex[0], it, mip = true) }; p.deep?.let { upload(tex[1], it, mip = false) }; lastA = p; pendingA = null }
+        pendingB?.let { p -> p.sharp?.let { upload(tex[2], it, mip = true) }; p.deep?.let { upload(tex[3], it, mip = false) }; lastB = p; pendingB = null }
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         if (lastA?.sharp == null) return
         GLES30.glUseProgram(program)
@@ -86,31 +86,45 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
             GLES30.glVertexAttribPointer(aPos, 2, GLES30.GL_FLOAT, false, 0, 0)
             GLES30.glUniform4f(u["uRect"]!!, r.center.x, r.center.y, r.width / 2f, r.height / 2f)
             GLES30.glUniform1f(u["uRadius"]!!, p.cornerPx)
-            // Tiles: a clear lens ring around a deeply frosted centre, so icons stay legible on busy
-            // photos. Sheets: the lens lives at the edge only; the interior is near-opaque frost.
-            val (bevel, thick, frost) = when (p.kind) {
-                GlassVariant.Tile -> Triple(minOf(r.height * 0.20f, 20f), 8f, 0.94f)
-                GlassVariant.Pill -> Triple(minOf(r.height * 0.3f, 12f), 4f, 0.95f)
-                GlassVariant.Sheet -> Triple(18f, 4f, 0.98f)
+            // Tiles: a wide, thick lens around a clear, lightly softened middle, so the photo reads
+            // through the slab. Pills: a little more frost under the label. Sheets: the deep blur,
+            // they carry text. Frosted-only mode drops the bevel and the bend and frosts the middle.
+            val m = when (p.kind) {
+                GlassVariant.Tile -> Material(bevel = minOf(r.height * 0.19f, 36f), thick = 14f, lod = 2.6f, deep = 0f, tint = 0.16f)
+                GlassVariant.Pill -> Material(bevel = minOf(r.height * 0.35f, 16f), thick = 6f, lod = 3.2f, deep = 0f, tint = 0.24f)
+                GlassVariant.Sheet -> Material(bevel = 18f, thick = 6f, lod = 4f, deep = 1f, tint = 0.34f)
             }
-            GLES30.glUniform1f(u["uBevel"]!!, if (refraction) bevel else 1f)
-            GLES30.glUniform1f(u["uThick"]!!, if (refraction) thick else 0f)
+            GLES30.glUniform1f(u["uBevel"]!!, if (refraction) m.bevel else 1f)
+            GLES30.glUniform1f(u["uThick"]!!, if (refraction) m.thick else 0f)
             GLES30.glUniform1f(u["uLift"]!!, p.lift)
             GLES30.glUniform1f(u["uAlpha"]!!, p.alpha)
-            GLES30.glUniform1f(u["uFrostMix"]!!, frost)
+            GLES30.glUniform1f(u["uLod"]!!, if (refraction) m.lod else 5f)
+            GLES30.glUniform1f(u["uDeepMix"]!!, m.deep)
+            GLES30.glUniform1f(u["uTint"]!!, if (refraction) m.tint else m.tint + 0.1f)
+            // The lens thickens a little as the tile lifts: the slab magnifies more and bends more.
+            GLES30.glUniform1f(u["uMag"]!!, if (refraction) 1.04f + 0.04f * p.lift else 1f)
             GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
         }
         GLES30.glDisableVertexAttribArray(aPos)
     }
 
-    private fun upload(t: Int, bmp: Bitmap) {
+    /** Per-kind glass recipe; see [onDrawFrame]. */
+    private class Material(val bevel: Float, val thick: Float, val lod: Float, val deep: Float, val tint: Float)
+
+    /**
+     * [mip]: the sharp photos get a mipmap chain, which is what the shader samples for the slab's
+     * soft middle (a hardware blur that costs nothing per frame; the chain is built once per
+     * photo change, about a third more texture memory).
+     */
+    private fun upload(t: Int, bmp: Bitmap, mip: Boolean) {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, if (mip) GLES30.GL_LINEAR_MIPMAP_LINEAR else GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
         // The refracted sample runs past the edge; clamp so it never wraps.
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
+        if (mip) GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
     }
 
     private fun link(vs: String, fs: String): Int {

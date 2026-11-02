@@ -23,7 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -75,7 +77,11 @@ fun Tile(
                 ) {
                     Text(
                         label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 16.sp),
+                        style = TextStyle(
+                            fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 16.sp,
+                            // The pill is clearer glass now; a soft shadow keeps the label readable over bright photos.
+                            shadow = Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 1f), blurRadius = 6f),
+                        ),
                     )
                 }
             }
