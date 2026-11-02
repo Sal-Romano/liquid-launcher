@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -20,15 +21,18 @@ enum class GlassVariant { Tile, Pill, Sheet }
 
 /**
  * Marks a composable as a glass panel. The glass itself is painted by a [GlassLayer] (OpenGL ES,
- * real refraction); this modifier only reports where the panel is and clips the content to the
- * squircle. [layer] picks the GL pass (home chrome vs overlays, which paint above the clock and
- * dock). [alpha] lets a hiding row fade its glass too.
+ * real refraction); this modifier reports where the panel is, applies the focus lift, and clips
+ * the content to the squircle. [layer] picks the GL pass (home chrome vs overlays, which paint
+ * above the clock and dock). [alpha] lets a hiding row fade its glass too.
  *
- * Focus lift: the tile's own graphicsLayer scales it by (1 + liftScale * lift) about its centre
- * and raises it by liftPx * lift. The glass rect is computed here FROM THE SAME lift value, in
- * the same frame, so the glass and the icon can never disagree by a frame (reading the
- * transformed bounds back from layout gives last frame's transform and shows as a one-frame
- * "padding" during a spring).
+ * Focus lift: the panel scales by (1 + liftScale * lift) about its centre and rises by
+ * liftPx * lift. This modifier owns that transform, and it sits AFTER the position report in the
+ * chain, so the reported rect is the plain layout rect (ancestor transforms such as the dock's
+ * drop included, this panel's own lift excluded). The glass rect is then derived from the same
+ * lift value the transform uses, in the same frame. Reading the position from inside the lift
+ * layer would hand back the scaled corner with the unscaled size and put the slab up-left of
+ * the icon by 6% of its width at full lift; the callers must therefore not add their own lift
+ * graphicsLayer before this modifier.
  */
 fun Modifier.glass(
     shape: SquircleShape,
@@ -64,17 +68,24 @@ fun Modifier.glass(
             layoutRect?.let { report(it) }
         }
     }
+    val lifts = liftScale != 0f || liftPx != 0f
     this
         .onGloballyPositioned { c: LayoutCoordinates ->
-            // Layout position without this node's own graphicsLayer transform: that transform is
-            // re-derived from lift above. (positionInRoot includes ancestor transforms, which is
-            // what we want for a tile inside a fading, dropping dock.)
+            // Outside the lift layer below: plain layout coordinates. Compose re-dispatches this
+            // when an ancestor's layer moves (the dock dropping), which is wanted.
             val pos = c.positionInRoot()
             val size = c.size
             val r = Rect(pos.x, pos.y, pos.x + size.width, pos.y + size.height)
             layoutRect = r
             report(r)
         }
+        .then(
+            if (lifts) Modifier.graphicsLayer {
+                val s = 1f + liftScale * lift
+                scaleX = s; scaleY = s
+                translationY = -liftPx * lift
+            } else Modifier,
+        )
         .clip(shape)
 }
 

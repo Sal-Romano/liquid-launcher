@@ -2,6 +2,7 @@ package dev.sal.glass.ui.overlay
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -92,15 +93,16 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                 ) {
                     items(apps, key = { it.packageName }) { app ->
                         var focused by remember { mutableStateOf(false) }
+                        val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gridLift")
                         Column(
                             Modifier.width(84.dp).then(if (app == apps.first()) Modifier.focusRequester(first) else Modifier),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            // glass() owns the focus scale; see GlassModifier.
                             Box(
                                 Modifier
                                     .size(84.dp)
-                                    .graphicsLayer { val s = if (focused) 1.08f else 1f; scaleX = s; scaleY = s }
-                                    .glass(TileShape, GlassVariant.Tile, focused = focused, alpha = glassAlpha, layer = GlassLayerId.Overlay)
+                                    .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha, layer = GlassLayerId.Overlay, liftScale = 0.08f)
                                     .onFocusChanged { focused = it.isFocused }
                                     .focusable()
                                     .tileClicks({ onLaunch(app) }, {}),

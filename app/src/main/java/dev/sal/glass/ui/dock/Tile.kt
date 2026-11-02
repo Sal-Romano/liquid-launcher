@@ -1,8 +1,8 @@
 package dev.sal.glass.ui.dock
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -38,8 +41,9 @@ import dev.sal.glass.ui.theme.GlassFonts
 
 /**
  * One 84 dp glass squircle. On focus it lifts (scale 1.12, -6 dp) with a spring and shows its
- * label in a pill above. The pill occupies the column's top 36 dp whether visible or not, so the
- * row never reflows when focus moves.
+ * label in a pill above. The column is always exactly [TileColumnWidth] wide: the pill is laid
+ * out unbounded and centred over the column, overflowing it on both sides when the label is
+ * wider than the tile, so the row never reflows when focus moves.
  */
 @Composable
 fun Tile(
@@ -55,27 +59,32 @@ fun Tile(
     val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "lift")
     val liftPx = with(LocalDensity.current) { 6.dp.toPx() }
 
-    // The label slot is taller than the pill and the pill sits at its bottom, so the lifted tile
-    // (-6 dp) and the pill's upward shadow both stay inside the column instead of being clipped.
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.height(48.dp).padding(bottom = 10.dp), contentAlignment = Alignment.BottomCenter) {
-            androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(), exit = fadeOut()) {
+    Column(modifier.width(TileColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+        // The label slot is taller than the pill and the pill sits at its bottom, so the lifted tile
+        // (-6 dp) and the pill's upward shadow both stay inside the column instead of being clipped.
+        Box(Modifier.width(TileColumnWidth).height(48.dp).padding(bottom = 10.dp), contentAlignment = Alignment.BottomCenter) {
+            androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
                 Box(
-                    Modifier.height(28.dp).glass(PillShape, GlassVariant.Pill, alpha = glassAlpha).padding(horizontal = 14.dp),
+                    Modifier
+                        .wrapContentWidth(Alignment.CenterHorizontally, unbounded = true)
+                        .widthIn(max = 220.dp)
+                        .height(28.dp)
+                        .glass(PillShape, GlassVariant.Pill, alpha = glassAlpha)
+                        .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, color = Color.White, style = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 16.sp), maxLines = 1)
+                    Text(
+                        label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 16.sp),
+                    )
                 }
             }
         }
+        // The lift transform lives inside glass(): the glass rect and the icon's scale come from
+        // the same lift value and the same layout rect. Do not add a graphicsLayer before it.
         Box(
             Modifier
                 .size(84.dp)
-                .graphicsLayer {
-                    val s = 1f + 0.12f * lift
-                    scaleX = s; scaleY = s
-                    translationY = -liftPx * lift
-                }
                 .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha, liftScale = 0.12f, liftPx = liftPx)
                 .onFocusChanged { focused = it.isFocused }
                 .focusable()
@@ -95,7 +104,5 @@ fun Tile(
     }
 }
 
-/** Keeps the dock's rhythm: a tile column is always 84 wide and 36 + 84 tall. */
+/** Keeps the dock's rhythm: a tile column is always 84 wide and 48 + 84 tall. */
 val TileColumnWidth = 84.dp
-@Suppress("unused")
-private val keepWidth = Modifier.width(TileColumnWidth)
