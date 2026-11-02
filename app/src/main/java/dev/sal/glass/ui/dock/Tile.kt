@@ -52,7 +52,7 @@ fun Tile(
     glassAlpha: Float = 1f,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "lift")
+    val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "lift")
     val liftPx = with(LocalDensity.current) { 6.dp.toPx() }
 
     // The label slot is taller than the pill and the pill sits at its bottom, so the lifted tile
@@ -76,7 +76,7 @@ fun Tile(
                     scaleX = s; scaleY = s
                     translationY = -liftPx * lift
                 }
-                .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha)
+                .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha, liftScale = 0.12f, liftPx = liftPx)
                 .onFocusChanged { focused = it.isFocused }
                 .focusable()
                 .tileClicks(onClick, onLongClick),

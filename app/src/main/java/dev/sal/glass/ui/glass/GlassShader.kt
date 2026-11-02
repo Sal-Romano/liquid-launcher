@@ -136,9 +136,12 @@ void main() {
     // Inner highlight: light enters from the top-left of the slab.
     vec2 g = (p + uRect.zw) / (2.0 * uRect.zw);
     col += vec3(0.12 * (1.0 - clamp(g.x * 0.6 + g.y * 0.9, 0.0, 1.0)));
-    // A faint bright line just inside the top edge, the second edge of a thick slab.
-    float innerTop = 1.0 - smoothstep(0.0, 2.5, abs(-sd - uBevel * 0.55));
-    col += vec3(0.10 * innerTop * (0.6 + 0.4 * uLift));
+    // The slab's far edge: a soft band just inside the bevel, lit from above so it is brightest
+    // along the top and fades out down the sides. Wide and faint, so it reads as light in glass,
+    // not as a drawn border.
+    float innerBand = 1.0 - smoothstep(0.0, uBevel * 0.9, abs(-sd - uBevel * 0.7));
+    float fromTop = clamp(0.5 - p.y / (2.0 * uRect.w), 0.0, 1.0);   // 1 at the top edge, 0 at the bottom
+    col += vec3(0.07 * innerBand * fromTop * fromTop * (0.7 + 0.3 * uLift));
 
     // 1 px anti-aliased edge; the shadow continues outside.
     float cover = 1.0 - smoothstep(-0.75, 0.75, sd);

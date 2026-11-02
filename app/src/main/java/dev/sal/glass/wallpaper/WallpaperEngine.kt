@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.sal.glass.data.Blur
+import dev.sal.glass.data.BlurCache
 import dev.sal.glass.data.Wallpapers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,6 +32,7 @@ class Frame(val file: File, val image: Bitmap, val thumb: Bitmap, val deep: Bitm
  * is decoded right after a transition so the following one starts instantly.
  */
 class WallpaperEngine(private val appContext: Context) : ViewModel() {
+    private val blurs = BlurCache(appContext)
     var current by mutableStateOf<Frame?>(null); private set
     var next by mutableStateOf<Frame?>(null); private set
     /** 0 = showing [current]; 1 = [next] fully in. The layer animates this and calls [onTransitionDone]. */
@@ -55,6 +56,9 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
                 rescan()
                 current = decodeNext()
                 prefetch()
+                // Pre-render every photo's blurs once, after the first frame is up, so later
+                // switches are a 30 KB read instead of ~0.6 s of CPU on the TV.
+                launch { blurs.warmAll(known.toList()) }
             }
             while (isActive) {
                 delay(intervalMs)
@@ -113,7 +117,8 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         val t0 = SystemClock.elapsedRealtime()
         val frame = withContext(Dispatchers.IO) {
             val image = Wallpapers.load(file) ?: return@withContext null
-            Frame(file, image, Blur.frosted(image), Blur.deep(image))
+            val (deep, frost) = blurs.blursFor(file, image)
+            Frame(file, image, frost, deep)
         } ?: return decodeNext()
         lastShown = file
         Log.i("Glass", "wallpaper ${file.name} decoded in ${SystemClock.elapsedRealtime() - t0} ms")
