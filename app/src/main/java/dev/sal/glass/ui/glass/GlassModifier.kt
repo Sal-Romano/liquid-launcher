@@ -1,7 +1,12 @@
 package dev.sal.glass.ui.glass
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
@@ -26,15 +31,23 @@ fun Modifier.glass(
 ): Modifier = composed {
     val id = remember { Any() }
     val cornerPx = with(LocalDensity.current) { shape.radiusDp.toPx() }
+    var lastRect by remember { mutableStateOf<Rect?>(null) }
     DisposableEffect(id) { onDispose { GlassPanels.remove(id) } }
+    // Heartbeat: onGloballyPositioned only fires when layout changes, but the registry prunes
+    // panels not reported recently, so re-report the last rect every frame while composed.
+    LaunchedEffect(id, lift, alpha) {
+        while (true) {
+            withFrameNanos { }
+            lastRect?.let { GlassPanels.update(id, it, cornerPx, variant, lift, alpha) }
+        }
+    }
     this
         .onGloballyPositioned { c ->
             val pos = c.positionInRoot()
             val size = c.size
-            GlassPanels.update(
-                id, Rect(pos.x, pos.y, pos.x + size.width, pos.y + size.height),
-                cornerPx, variant, lift, alpha,
-            )
+            val r = Rect(pos.x, pos.y, pos.x + size.width, pos.y + size.height)
+            lastRect = r
+            GlassPanels.update(id, r, cornerPx, variant, lift, alpha)
         }
         .clip(shape)
 }

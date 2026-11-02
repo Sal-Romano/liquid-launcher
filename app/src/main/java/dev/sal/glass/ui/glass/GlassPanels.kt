@@ -16,6 +16,8 @@ class GlassPanel(
     @Volatile var lift: Float,
     /** 0..1: fade in/out, so a hiding dock does not pop. */
     @Volatile var alpha: Float = 1f,
+    /** Last [GlassPanels.frame] this panel was reported in; stale panels are dropped. */
+    @Volatile var seenAt: Long = 0L,
 )
 
 object GlassPanels {
@@ -23,14 +25,24 @@ object GlassPanels {
     /** Bumped on every change; the renderer compares it to decide whether to redraw. */
     @Volatile var version = 0L; private set
     @Volatile var onChanged: (() -> Unit)? = null
+    /**
+     * Monotonic "report generation". A composable that is leaving can still report a position
+     * after its dispose ran, which would resurrect it; so instead of trusting dispose order, a
+     * panel that has not been reported for [STALE_AFTER] generations is dropped at draw time.
+     */
+    @Volatile var frame = 0L; private set
+    private const val STALE_AFTER = 3
 
     @Synchronized
     fun update(id: Any, rect: Rect, cornerPx: Float, kind: GlassVariant, lift: Float, alpha: Float) {
         val p = panels[id]
         if (p == null) {
-            panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha)
+            panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha, frame)
         } else {
-            if (p.kind == kind && p.cornerPx == cornerPx && near(p.rect, rect) && kotlin.math.abs(p.lift - lift) < 0.01f && kotlin.math.abs(p.alpha - alpha) < 0.01f) return
+            p.seenAt = frame
+            if (p.kind == kind && p.cornerPx == cornerPx && near(p.rect, rect) &&
+                kotlin.math.abs(p.lift - lift) < 0.01f && kotlin.math.abs(p.alpha - alpha) < 0.01f
+            ) return
             p.rect = rect; p.cornerPx = cornerPx; p.kind = kind; p.lift = lift; p.alpha = alpha
         }
         version++
@@ -46,6 +58,18 @@ object GlassPanels {
         if (panels.remove(id) != null) { version++; onChanged?.invoke() }
     }
 
+    /** Called once per Compose frame by the host; advances the generation and prunes stale panels. */
     @Synchronized
-    fun snapshot(): List<GlassPanel> = panels.values.toList()
+    fun tick() {
+        frame++
+        val it = panels.values.iterator()
+        var dropped = false
+        while (it.hasNext()) {
+            if (frame - it.next().seenAt > STALE_AFTER) { it.remove(); dropped = true }
+        }
+        if (dropped) { version++; onChanged?.invoke() }
+    }
+
+    @Synchronized
+    fun snapshot(): List<GlassPanel> = panels.values.filter { frame - it.seenAt <= STALE_AFTER }
 }

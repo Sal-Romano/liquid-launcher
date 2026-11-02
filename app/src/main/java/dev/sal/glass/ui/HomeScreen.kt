@@ -42,6 +42,8 @@ import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
 import dev.sal.glass.ui.glass.GlassBackdrop
 import dev.sal.glass.ui.glass.GlassLayer
+import dev.sal.glass.ui.glass.GlassPanels
+import androidx.compose.runtime.withFrameNanos
 import dev.sal.glass.ui.glass.LocalGlassBackdrop
 import dev.sal.glass.ui.glass.ScreenSize
 import dev.sal.glass.ui.overlay.AllApps
@@ -74,7 +76,12 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var glassTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(overlay, dockVisible) {
         val until = System.currentTimeMillis() + 700
-        while (System.currentTimeMillis() < until) { glassTick++; delay(16) }
+        while (System.currentTimeMillis() < until) { GlassPanels.tick(); glassTick++; delay(16) }
+    }
+    // Every composed frame re-reports its panels; this advances the generation each frame so a
+    // panel whose composable left (overlay closed, row recycled) is pruned within ~3 frames.
+    LaunchedEffect(Unit) {
+        while (true) { withFrameNanos { }; GlassPanels.tick() }
     }
 
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }

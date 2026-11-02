@@ -1,6 +1,7 @@
 package dev.sal.glass.ui.overlay
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -70,6 +71,7 @@ private val Title = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeigh
 @Composable
 fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
+    val glassAlpha by animateFloatAsState(if (visible) 1f else 0f, tween(if (visible) 280 else 160), label = "allAppsGlass")
     LaunchedEffect(visible) { if (visible) { delay(50); runCatching { first.requestFocus() } } }
     AnimatedVisibility(
         visible,
@@ -97,7 +99,7 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                                 Modifier
                                     .size(84.dp)
                                     .graphicsLayer { val s = if (focused) 1.08f else 1f; scaleX = s; scaleY = s }
-                                    .glass(TileShape, GlassVariant.Tile, focused = focused)
+                                    .glass(TileShape, GlassVariant.Tile, focused = focused, alpha = glassAlpha)
                                     .onFocusChanged { focused = it.isFocused }
                                     .focusable()
                                     .tileClicks({ onLaunch(app) }, {}),
