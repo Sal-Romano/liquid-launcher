@@ -2,7 +2,6 @@ package dev.sal.glass.wallpaper
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseInOut
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,9 +41,20 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
             fade.snapTo(0f)
         }
     }
+    // Ken Burns at 4 fps, not 60: a 6 % zoom over a minute moves about a pixel every half second,
+    // so stepping every 250 ms looks identical and leaves the GPU idle between steps (the TV would
+    // otherwise redraw a full 1080p frame 60 times a second for the whole minute).
     LaunchedEffect(current?.file, kenBurns, engine.intervalMs) {
         zoom.snapTo(1f)
-        if (kenBurns) zoom.animateTo(1.06f, tween(engine.intervalMs.toInt(), easing = LinearEasing))
+        if (!kenBurns) return@LaunchedEffect
+        val start = System.currentTimeMillis()
+        val total = engine.intervalMs.toFloat()
+        while (true) {
+            val t = ((System.currentTimeMillis() - start) / total).coerceIn(0f, 1f)
+            zoom.snapTo(1f + 0.06f * t)
+            if (t >= 1f) break
+            kotlinx.coroutines.delay(250)
+        }
     }
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
