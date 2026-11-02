@@ -34,6 +34,10 @@ Fire OS intercepts the Home button and will not let a third-party launcher be th
 
 For development without the TV, an Android TV API 31 image at 1920×1080 and density 320 stands in. Disable the stock launcher there (`adb shell pm disable-user --user 0 com.google.android.tvlauncher`) so Home lands here.
 
+## Commits
+
+Messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat`, `fix`, `perf`, `refactor`, `docs`, `build`, `chore`, with an optional scope such as `glass`, `dock`, `wallpaper` or `allapps`. Bug fixes are `fix:`.
+
 ## Credits
 
 The refraction model follows two MIT-licensed WebGL references, [m2-md/liquid-glass-refraction-shader](https://github.com/m2-md/liquid-glass-refraction-shader) and [TiHxdvt/liquid-glass-webgl](https://github.com/TiHxdvt/liquid-glass-webgl); their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The typeface is Inter, under the SIL Open Font License ([INTER-OFL.txt](INTER-OFL.txt)). Squircles come from `androidx.graphics.shapes`.
