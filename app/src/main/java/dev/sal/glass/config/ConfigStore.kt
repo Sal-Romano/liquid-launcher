@@ -1,0 +1,97 @@
+package dev.sal.glass.config
+
+import android.content.Context
+import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import dev.sal.glass.data.Apps
+import kotlinx.serialization.json.Json
+import java.io.File
+
+/**
+ * launcher.json in the app's files dir. Sal can also edit it over adb:
+ *   adb shell run-as dev.sal.glass cat files/launcher.json   (debug build)
+ * Writes go through a temp file + rename so a crash mid-write never leaves a half config.
+ */
+class ConfigStore(private val context: Context) {
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
+    private val file = File(context.filesDir, "launcher.json")
+
+    var config by mutableStateOf(load()); private set
+
+    private fun load(): LauncherConfig {
+        if (file.exists()) {
+            runCatching { return json.decodeFromString<LauncherConfig>(file.readText()) }
+                .onFailure { Log.w("Glass", "launcher.json unreadable, regenerating", it) }
+        }
+        return defaults().also { persist(it) }
+    }
+
+    /** Plex first even if absent, then the big streaming apps that are installed, then All apps. */
+    private fun defaults(): LauncherConfig {
+        val installed = Apps.launchable(context).associateBy { it.packageName }
+        val tiles = mutableListOf<Tile>()
+        tiles += AppTile("plex", "com.plexapp.android/com.plexapp.plex.activities.SplashActivity", "Plex", requirePackage = false)
+        for ((pkg, label) in PREFERRED) {
+            val app = installed[pkg] ?: continue
+            tiles += AppTile(pkg, "${app.packageName}/${app.activityName}", label)
+        }
+        // Nothing preferred is installed (a fresh device, the emulator): seat the first few real
+        // apps so the dock is a dock and not two lonely tiles.
+        if (tiles.size == 1) {
+            installed.values.filter { it.packageName !in Apps.HIDDEN_PACKAGES }.take(5).forEach { app ->
+                tiles += AppTile(app.packageName, "${app.packageName}/${app.activityName}", app.label)
+            }
+        }
+        tiles += ActionTile("all-apps", Action.AllApps, "All apps")
+        return LauncherConfig(rows = listOf(TileRow("dock", tiles = tiles)), hidden = Apps.HIDDEN_PACKAGES)
+    }
+
+    fun update(transform: (LauncherConfig) -> LauncherConfig) {
+        config = transform(config)
+        persist(config)
+    }
+
+    fun move(tileId: String, delta: Int) = update { c ->
+        val tiles = c.dockTiles.toMutableList()
+        val i = tiles.indexOfFirst { it.id == tileId }
+        val j = (i + delta).coerceIn(0, tiles.lastIndex)
+        if (i < 0 || i == j) return@update c
+        tiles.add(j, tiles.removeAt(i))
+        c.withDock(tiles)
+    }
+
+    fun moveToFront(tileId: String) = update { c ->
+        val tiles = c.dockTiles.toMutableList()
+        val i = tiles.indexOfFirst { it.id == tileId }
+        if (i <= 0) return@update c
+        tiles.add(0, tiles.removeAt(i))
+        c.withDock(tiles)
+    }
+
+    fun hide(tileId: String) = update { c -> c.withDock(c.dockTiles.filterNot { it.id == tileId }) }
+
+    private fun LauncherConfig.withDock(tiles: List<Tile>): LauncherConfig {
+        val rows = rows.toMutableList()
+        if (rows.isEmpty()) rows += TileRow("dock", tiles = tiles) else rows[0] = rows[0].copy(tiles = tiles)
+        return copy(rows = rows)
+    }
+
+    private fun persist(c: LauncherConfig) {
+        runCatching {
+            val tmp = File(file.parentFile, "launcher.json.tmp")
+            tmp.writeText(json.encodeToString(LauncherConfig.serializer(), c))
+            if (!tmp.renameTo(file)) error("rename failed")
+        }.onFailure { Log.e("Glass", "could not save launcher.json", it) }
+    }
+
+    companion object {
+        private val PREFERRED = listOf(
+            "com.netflix.ninja" to "Netflix",
+            "com.amazon.firebat" to "Prime Video",
+            "com.amazon.spiderpork" to "Luna",
+            "com.amazon.bueller.music" to "Amazon Music",
+        )
+    }
+}
