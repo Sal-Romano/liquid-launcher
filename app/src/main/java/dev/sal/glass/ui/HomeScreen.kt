@@ -2,6 +2,8 @@ package dev.sal.glass.ui
 
 import android.content.Intent
 import android.util.Log
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -148,14 +151,18 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             val dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f
             val refraction = config.glass.mode == GlassMode.Refraction
             GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, glassTick, refraction)
+            // All apps is a screen of its own: the clock and the dock leave while it is up, so the
+            // grid sits on the photo alone instead of over the home chrome.
+            val chrome = overlay != Overlay.AllApps
+            val clockAlpha by animateFloatAsState(if (chrome) 1f else 0f, tween(220), label = "clockAlpha")
             // Clock block centred at 43% of the height.
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
                 Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 Dock(
                     tiles = config.dockTiles,
-                    visible = dockVisible,
+                    visible = dockVisible && chrome,
                     onLaunch = ::launch,
                     onContextMenu = { contextTile = it; overlay = Overlay.Context },
                     focusRequester = dockFocus,
