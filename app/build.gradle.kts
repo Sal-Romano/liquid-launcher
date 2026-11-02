@@ -28,9 +28,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1"
-        // The TV (Hisense U6 Fire TV, MT5896) has a 32-bit userspace only. We ship no
-        // native code, so this is documentation more than configuration.
-        ndk { abiFilters += listOf("armeabi-v7a") }
+        // No abiFilters: the app ships no native code, so one APK serves the TV (32-bit
+        // armeabi-v7a only) and the arm64 emulator alike. A filter here blocked the emulator.
     }
 
     buildFeatures {
