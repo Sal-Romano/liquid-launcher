@@ -1,0 +1,43 @@
+# Liquid Launcher
+
+A home screen for a Fire TV (Hisense U6, Fire OS 8, Android 11) that is a photo frame first and a launcher second. Your photos fill the screen, the time floats in the middle, and one row of liquid-glass tiles fades away when you stop touching the remote.
+
+The glass is real refraction, not a painted blur: a GLSL ES 3.0 fragment shader draws every panel as a slab with a bevelled edge, bends the photo behind it through `refract()` at IOR 1.52 with a little dispersion, softens the middle from the photo's own mipmap chain, and lights the rim. It runs in a `TextureView` between the wallpaper and the Compose chrome, because Android 11 has no `RenderEffect` and the TV's Mali-G52 cannot afford a per-frame blur.
+
+Kotlin, Jetpack Compose for TV. The app is called Glass internally (package `dev.sal.glass`); the design spec is in [DESIGN.md](DESIGN.md).
+
+## Status
+
+Early. Everything below runs on an Android TV emulator; the first run on the TV itself is still ahead. Expect rough edges.
+
+## What it does
+
+- Wallpapers from `/sdcard/Pictures/Wallpapers` (push photos over adb): shuffle without repeats, 1.2 s crossfade, slow Ken Burns push-in, skip and pause from the remote.
+- Clock block centred at 43 % of the height, updates on the minute, 12/24 h, three sizes.
+- A dock of up to eight tiles driven by `launcher.json` (apps, intents, actions, with Home Assistant entities and folders reserved). Hold OK on a tile to move or hide it.
+- All apps grid, settings sheet, and a frosted-only glass mode for when the GPU disagrees.
+- Pre-rendered blurs cached on disk, about 30 KB per photo, rendered once in the background.
+
+## Build and install
+
+Needs JDK 17 and an Android SDK with platform 37 installed.
+
+```sh
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell pm grant dev.sal.glass android.permission.READ_EXTERNAL_STORAGE
+adb shell appops set dev.sal.glass READ_EXTERNAL_STORAGE allow
+adb push my-photo.jpg /sdcard/Pictures/Wallpapers/
+```
+
+Fire OS intercepts the Home button and will not let a third-party launcher be the default. [Home on Fire](https://github.com/toolicious/home-on-fire) (an accessibility-service redirect, GPLv3) can send Home presses to this app; the TV's own launcher still flashes for a moment unless it is patched to watch the activity log instead of the key.
+
+For development without the TV, an Android TV API 31 image at 1920×1080 and density 320 stands in. Disable the stock launcher there (`adb shell pm disable-user --user 0 com.google.android.tvlauncher`) so Home lands here.
+
+## Credits
+
+The refraction model follows two MIT-licensed WebGL references, [m2-md/liquid-glass-refraction-shader](https://github.com/m2-md/liquid-glass-refraction-shader) and [TiHxdvt/liquid-glass-webgl](https://github.com/TiHxdvt/liquid-glass-webgl); their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The typeface is Inter, under the SIL Open Font License ([INTER-OFL.txt](INTER-OFL.txt)). Squircles come from `androidx.graphics.shapes`.
+
+## License
+
+No license has been chosen for this code yet.
