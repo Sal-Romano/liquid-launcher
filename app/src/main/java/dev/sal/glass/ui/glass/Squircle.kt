@@ -19,6 +19,7 @@ import androidx.graphics.shapes.toPath
  * the dock rebuilds outlines while tiles scale on focus.
  */
 class SquircleShape(private val radius: Dp = 20.dp, private val smoothing: Float = 0.6f) : Shape {
+    val radiusDp: Dp get() = radius
     private var cachedSize: Size? = null
     private var cachedDensity = 0f
     private var cachedPath: Path? = null

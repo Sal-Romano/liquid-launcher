@@ -78,6 +78,7 @@ fun Dock(
                     onClick = { onLaunch(tile) },
                     onLongClick = { onContextMenu(tile) },
                     modifier = if (tile == tiles.first()) Modifier.focusRequester(firstRequester) else Modifier,
+                    glassAlpha = alpha,
                 )
             }
         }

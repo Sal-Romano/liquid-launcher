@@ -49,6 +49,7 @@ fun Tile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    glassAlpha: Float = 1f,
 ) {
     var focused by remember { mutableStateOf(false) }
     val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "lift")
@@ -60,7 +61,7 @@ fun Tile(
         Box(Modifier.height(48.dp).padding(bottom = 10.dp), contentAlignment = Alignment.BottomCenter) {
             androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(), exit = fadeOut()) {
                 Box(
-                    Modifier.height(28.dp).glass(PillShape, GlassVariant.Pill).padding(horizontal = 14.dp),
+                    Modifier.height(28.dp).glass(PillShape, GlassVariant.Pill, alpha = glassAlpha).padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(label, color = Color.White, style = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 16.sp), maxLines = 1)
@@ -75,7 +76,7 @@ fun Tile(
                     scaleX = s; scaleY = s
                     translationY = -liftPx * lift
                 }
-                .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift)
+                .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha)
                 .onFocusChanged { focused = it.isFocused }
                 .focusable()
                 .tileClicks(onClick, onLongClick),

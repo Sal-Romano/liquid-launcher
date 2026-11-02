@@ -40,6 +40,7 @@ import dev.sal.glass.ui.clock.Clock
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
 import dev.sal.glass.ui.glass.GlassBackdrop
+import dev.sal.glass.ui.glass.GlassLayer
 import dev.sal.glass.ui.glass.LocalGlassBackdrop
 import dev.sal.glass.ui.glass.ScreenSize
 import dev.sal.glass.ui.overlay.AllApps
@@ -68,6 +69,12 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var toast by remember { mutableStateOf<String?>(null) }
     val dockFocus = remember { FocusRequester() }
     val apps = remember(config) { Apps.launchable(context).filter { it.packageName !in config.hidden } }
+    // While an overlay or the dock animates, nudge the GL layer every frame so its panels track.
+    var glassTick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(overlay, dockVisible) {
+        val until = System.currentTimeMillis() + 700
+        while (System.currentTimeMillis() < until) { glassTick++; delay(16) }
+    }
 
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }
     LaunchedEffect(wakeSignal) { engine.rescan(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
@@ -129,6 +136,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 },
         ) {
             WallpaperLayer(engine, config.wallpaper.kenBurns)
+            GlassLayer(engine.current?.image, engine.current?.thumb, dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f, tick = glassTick)
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
@@ -158,6 +166,16 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             Toast(toast) { toast = null }
         }
     }
+}
+
+/** 1 when the strip behind the dock is bright (snow, daytime sky), else 0, with a soft knee. */
+private fun dockLuma(thumb: android.graphics.Bitmap): Float {
+    var sum = 0f; var n = 0
+    val y0 = (thumb.height * 0.76f).toInt(); val y1 = (thumb.height * 0.95f).toInt().coerceAtMost(thumb.height - 1)
+    var y = y0
+    while (y <= y1) { var x = thumb.width / 5; while (x < thumb.width * 4 / 5) { val c = thumb.getPixel(x, y); sum += (0.2126f * ((c shr 16) and 0xFF) + 0.7152f * ((c shr 8) and 0xFF) + 0.0722f * (c and 0xFF)) / 255f; n++; x += 4 }; y += 3 }
+    val l = if (n == 0) 0.3f else sum / n
+    return ((l - 0.5f) / 0.15f).coerceIn(0f, 1f)
 }
 
 private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {
