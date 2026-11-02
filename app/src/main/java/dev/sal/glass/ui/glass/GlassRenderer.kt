@@ -9,47 +9,45 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * Draws every registered glass panel with [GlassShader] into [GlassTextureView]'s surface.
- * Textures are uploaded once per wallpaper change; frames are rendered on demand when a panel
- * moves, fades, or the wallpaper swaps.
+ * Draws every registered glass panel of one layer with [GlassShader] into [GlassTextureView]'s
+ * surface. Two texture pairs (outgoing/incoming photo, each sharp + deep blur) let the glass
+ * crossfade with the wallpaper. Textures are uploaded when a frame lands; frames are rendered on
+ * demand when a panel moves, fades, or the backdrop changes.
  */
-class GlassRenderer(private val requestRender: () -> Unit) {
+class GlassRenderer(private val registry: GlassPanels, private val requestRender: () -> Unit) {
     private var program = 0
     private var quad: FloatBuffer = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private var vbo = 0
-    private var texSharp = 0
-    private var texFrost = 0
+    private val tex = IntArray(4)   // sharpA, deepA, sharpB, deepB
     private var width = 1
     private var height = 1
+    private val u = HashMap<String, Int>()
 
-    // Pending uploads, handed over from the UI thread.
-    @Volatile private var pendingSharp: Bitmap? = null
-    @Volatile private var pendingFrost: Bitmap? = null
+    private class Pending(val sharp: Bitmap?, val deep: Bitmap?)
+    @Volatile private var pendingA: Pending? = null
+    @Volatile private var pendingB: Pending? = null
+    private var lastA: Pending? = null
+    private var lastB: Pending? = null
+    @Volatile var mix = 0f
+    @Volatile var zoom = 1f
     @Volatile var dark = 0f
     @Volatile var refraction = true
 
-    private val u = HashMap<String, Int>()
-
-    fun setWallpaper(sharp: Bitmap?, frost: Bitmap?) {
-        pendingSharp = sharp; pendingFrost = frost
-        requestRender()
-    }
+    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?) { pendingA = Pending(sharp, deep); requestRender() }
+    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?) { pendingB = Pending(sharp, deep); requestRender() }
 
     fun onSurfaceCreated() {
         program = link(GlassShader.VERTEX, GlassShader.FRAGMENT)
-        for (name in listOf("uSharp", "uFrost", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uFrostMix", "uDark")) {
+        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uFrostMix", "uDark")) {
             u[name] = GLES30.glGetUniformLocation(program, name)
         }
-        val ids = IntArray(2)
-        GLES30.glGenTextures(2, ids, 0)
-        texSharp = ids[0]; texFrost = ids[1]
+        GLES30.glGenTextures(4, tex, 0)
         val b = IntArray(1); GLES30.glGenBuffers(1, b, 0); vbo = b[0]
         GLES30.glClearColor(0f, 0f, 0f, 0f)
         GLES30.glEnable(GLES30.GL_BLEND)
-        // Straight alpha out of the shader.
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         // Re-upload after a context loss.
-        pendingSharp = pendingSharp ?: lastSharp; pendingFrost = pendingFrost ?: lastFrost
+        pendingA = pendingA ?: lastA; pendingB = pendingB ?: lastB
     }
 
     fun onSurfaceChanged(w: Int, h: Int) {
@@ -57,24 +55,27 @@ class GlassRenderer(private val requestRender: () -> Unit) {
         GLES30.glViewport(0, 0, w, h)
     }
 
-    private var lastSharp: Bitmap? = null
-    private var lastFrost: Bitmap? = null
-
     fun onDrawFrame() {
-        pendingSharp?.let { upload(texSharp, it); lastSharp = it; pendingSharp = null }
-        pendingFrost?.let { upload(texFrost, it); lastFrost = it; pendingFrost = null }
+        pendingA?.let { p -> p.sharp?.let { upload(tex[0], it) }; p.deep?.let { upload(tex[1], it) }; lastA = p; pendingA = null }
+        pendingB?.let { p -> p.sharp?.let { upload(tex[2], it) }; p.deep?.let { upload(tex[3], it) }; lastB = p; pendingB = null }
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
-        if (lastSharp == null) return
+        if (lastA?.sharp == null) return
         GLES30.glUseProgram(program)
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE0); GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, texSharp); GLES30.glUniform1i(u["uSharp"]!!, 0)
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE1); GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, texFrost); GLES30.glUniform1i(u["uFrost"]!!, 1)
+        for ((i, name) in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB").withIndex()) {
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0 + i)
+            // If B was never uploaded, bind A's textures so uMix > 0 cannot show black.
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, if (i >= 2 && lastB?.sharp == null) tex[i - 2] else tex[i])
+            GLES30.glUniform1i(u[name]!!, i)
+        }
+        GLES30.glUniform1f(u["uMix"]!!, if (lastB?.sharp == null) 0f else mix)
+        GLES30.glUniform1f(u["uZoom"]!!, zoom)
         GLES30.glUniform2f(u["uRes"]!!, width.toFloat(), height.toFloat())
         GLES30.glUniform1f(u["uDark"]!!, dark)
 
         val aPos = GLES30.glGetAttribLocation(program, "aPos")
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo)
         GLES30.glEnableVertexAttribArray(aPos)
-        for (p in GlassPanels.snapshot()) {
+        for (p in registry.snapshot()) {
             if (p.alpha <= 0.005f) continue
             val r = p.rect
             val margin = 40f + 20f * p.lift   // room for the shadow
@@ -85,12 +86,12 @@ class GlassRenderer(private val requestRender: () -> Unit) {
             GLES30.glVertexAttribPointer(aPos, 2, GLES30.GL_FLOAT, false, 0, 0)
             GLES30.glUniform4f(u["uRect"]!!, r.center.x, r.center.y, r.width / 2f, r.height / 2f)
             GLES30.glUniform1f(u["uRadius"]!!, p.cornerPx)
-            // Tiles: a clear bevel ring around a well-frosted centre, so icons stay legible on busy
+            // Tiles: a clear lens ring around a deeply frosted centre, so icons stay legible on busy
             // photos. Sheets: the lens lives at the edge only; the interior is near-opaque frost.
             val (bevel, thick, frost) = when (p.kind) {
-                GlassVariant.Tile -> Triple(minOf(r.height * 0.20f, 20f), 8f, 0.90f)
-                GlassVariant.Pill -> Triple(minOf(r.height * 0.3f, 12f), 4f, 0.92f)
-                GlassVariant.Sheet -> Triple(18f, 4f, 0.97f)
+                GlassVariant.Tile -> Triple(minOf(r.height * 0.20f, 20f), 8f, 0.94f)
+                GlassVariant.Pill -> Triple(minOf(r.height * 0.3f, 12f), 4f, 0.95f)
+                GlassVariant.Sheet -> Triple(18f, 4f, 0.98f)
             }
             GLES30.glUniform1f(u["uBevel"]!!, if (refraction) bevel else 1f)
             GLES30.glUniform1f(u["uThick"]!!, if (refraction) thick else 0f)
@@ -102,8 +103,8 @@ class GlassRenderer(private val requestRender: () -> Unit) {
         GLES30.glDisableVertexAttribArray(aPos)
     }
 
-    private fun upload(tex: Int, bmp: Bitmap) {
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
+    private fun upload(t: Int, bmp: Bitmap) {
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
         // The refracted sample runs past the edge; clamp so it never wraps.

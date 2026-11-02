@@ -36,9 +36,10 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
     LaunchedEffect(engine.transitioning) {
         if (engine.transitioning) {
             fade.snapTo(0f)
-            fade.animateTo(1f, tween(1200, easing = EaseInOut))
+            fade.animateTo(1f, tween(1200, easing = EaseInOut)) { engine.fade = value }
             engine.onTransitionDone()
             fade.snapTo(0f)
+            engine.fade = 0f
         }
     }
     // Ken Burns at 4 fps, not 60: a 6 % zoom over a minute moves about a pixel every half second,
@@ -46,12 +47,14 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
     // otherwise redraw a full 1080p frame 60 times a second for the whole minute).
     LaunchedEffect(current?.file, kenBurns, engine.intervalMs) {
         zoom.snapTo(1f)
+        engine.zoom = 1f
         if (!kenBurns) return@LaunchedEffect
         val start = System.currentTimeMillis()
         val total = engine.intervalMs.toFloat()
         while (true) {
             val t = ((System.currentTimeMillis() - start) / total).coerceIn(0f, 1f)
             zoom.snapTo(1f + 0.06f * t)
+            engine.zoom = zoom.value
             if (t >= 1f) break
             kotlinx.coroutines.delay(250)
         }

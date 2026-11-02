@@ -3,24 +3,32 @@ package dev.sal.glass.data
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
 
 /**
- * CPU blur for the glass panels. Android 11 has no RenderEffect, so each wallpaper gets one small
- * pre-blurred copy when it loads; the panels sample that copy behind themselves.
+ * CPU blurs for the glass, pre-rendered once per wallpaper on a background thread. Android 11 has
+ * no RenderEffect, and the GPU shader samples these as textures.
  *
- * Strategy: downscale by [DOWNSCALE] (1920 → 240 wide), then a few passes of a cheap box blur
- * (box ≈ Gaussian after 3 passes), then let the GPU upscale with bilinear filtering. The result is
- * a wide, soft blur, which is what frosted glass looks like; the detail lost to the downscale was
- * going to be blurred away anyway.
+ * Two grades:
+ *  - [frosted]: 240x135, a wide soft blur. Cheap (57 ms on the TV). Used for luma sampling.
+ *  - [deep]: 480x270 with a much wider kernel. This is the frosted-glass interior: a deep,
+ *    smooth blur that keeps the photo's colour fields but none of its detail, which is what a
+ *    thick slab of frosted glass actually does to what is behind it. ~400 ms on the TV, once
+ *    per photo change, off the main thread.
+ *
+ * Box blur run 3 times approximates a Gaussian; downscaling first makes the kernel effectively
+ * DOWNSCALE times wider in screen pixels for the same cost.
  */
 object Blur {
-    private const val DOWNSCALE = 8
+    fun frosted(src: Bitmap): Bitmap = run(src, downscale = 8, radius = 6, passes = 3)
 
-    fun frosted(src: Bitmap, radius: Int = 6, passes: Int = 3): Bitmap {
-        val w = (src.width / DOWNSCALE).coerceAtLeast(1)
-        val h = (src.height / DOWNSCALE).coerceAtLeast(1)
+    fun deep(src: Bitmap): Bitmap = run(src, downscale = 4, radius = 14, passes = 3)
+
+    private fun run(src: Bitmap, downscale: Int, radius: Int, passes: Int): Bitmap {
+        val w = (src.width / downscale).coerceAtLeast(1)
+        val h = (src.height / downscale).coerceAtLeast(1)
         val small = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        Canvas(small).drawBitmap(src, null, android.graphics.Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
+        Canvas(small).drawBitmap(src, null, Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
         val px = IntArray(w * h)
         small.getPixels(px, 0, w, 0, 0, w, h)
         val tmp = IntArray(w * h)

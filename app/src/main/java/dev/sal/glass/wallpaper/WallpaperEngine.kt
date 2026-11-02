@@ -22,7 +22,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** One decoded wallpaper plus its frosted copy for the glass panels. */
-class Frame(val file: File, val image: Bitmap, val thumb: Bitmap) {
+class Frame(val file: File, val image: Bitmap, val thumb: Bitmap, val deep: Bitmap) {
     val imageBitmap: ImageBitmap = image.asImageBitmap()
 }
 
@@ -39,6 +39,9 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     var paused by mutableStateOf(false); private set
     var intervalMs by mutableStateOf(60_000L)
     var empty by mutableStateOf(false); private set
+    /** Crossfade progress 0..1 and Ken Burns zoom, published by the layer so the glass can follow. */
+    var fade by mutableStateOf(0f)
+    var zoom by mutableStateOf(1f)
 
     private var queue = ArrayDeque<File>()
     private var known = emptySet<File>()
@@ -110,7 +113,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         val t0 = SystemClock.elapsedRealtime()
         val frame = withContext(Dispatchers.IO) {
             val image = Wallpapers.load(file) ?: return@withContext null
-            Frame(file, image, Blur.frosted(image))
+            Frame(file, image, Blur.frosted(image), Blur.deep(image))
         } ?: return decodeNext()
         lastShown = file
         Log.i("Glass", "wallpaper ${file.name} decoded in ${SystemClock.elapsedRealtime() - t0} ms")

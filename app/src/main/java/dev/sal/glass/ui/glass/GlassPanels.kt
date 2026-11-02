@@ -3,9 +3,9 @@ package dev.sal.glass.ui.glass
 import androidx.compose.ui.geometry.Rect
 
 /**
- * Where every glass panel is on screen this frame, in px. Composables post their rect here from
- * onGloballyPositioned; the GL layer reads the list when it draws. Compose owns the icons and text
- * on top; GL owns the glass itself.
+ * Where every glass panel of one layer is on screen this frame, in px, transformed bounds
+ * included. Composables post their rect here; the GL layer reads the list when it draws. Compose
+ * owns the icons and text on top; GL owns the glass itself.
  */
 class GlassPanel(
     val id: Any,
@@ -20,7 +20,10 @@ class GlassPanel(
     @Volatile var seenAt: Long = 0L,
 )
 
-object GlassPanels {
+/** Which GL pass a panel belongs to: under the home chrome, or above it (sheets, popovers, toasts). */
+enum class GlassLayerId { Home, Overlay }
+
+class GlassPanels {
     private val panels = LinkedHashMap<Any, GlassPanel>()
     /** Bumped on every change; the renderer compares it to decide whether to redraw. */
     @Volatile var version = 0L; private set
@@ -31,7 +34,6 @@ object GlassPanels {
      * panel that has not been reported for [STALE_AFTER] generations is dropped at draw time.
      */
     @Volatile var frame = 0L; private set
-    private const val STALE_AFTER = 3
 
     @Synchronized
     fun update(id: Any, rect: Rect, cornerPx: Float, kind: GlassVariant, lift: Float, alpha: Float) {
@@ -40,8 +42,8 @@ object GlassPanels {
             panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha, frame)
         } else {
             p.seenAt = frame
-            if (p.kind == kind && p.cornerPx == cornerPx && near(p.rect, rect) &&
-                kotlin.math.abs(p.lift - lift) < 0.01f && kotlin.math.abs(p.alpha - alpha) < 0.01f
+            if (p.kind == kind && near(p.cornerPx, cornerPx) && near(p.rect, rect) &&
+                near(p.lift, lift) && near(p.alpha, alpha)
             ) return
             p.rect = rect; p.cornerPx = cornerPx; p.kind = kind; p.lift = lift; p.alpha = alpha
         }
@@ -49,6 +51,7 @@ object GlassPanels {
         onChanged?.invoke()
     }
 
+    private fun near(a: Float, b: Float) = kotlin.math.abs(a - b) < 0.01f
     private fun near(a: Rect, b: Rect) =
         kotlin.math.abs(a.left - b.left) < 0.5f && kotlin.math.abs(a.top - b.top) < 0.5f &&
             kotlin.math.abs(a.right - b.right) < 0.5f && kotlin.math.abs(a.bottom - b.bottom) < 0.5f
@@ -72,4 +75,12 @@ object GlassPanels {
 
     @Synchronized
     fun snapshot(): List<GlassPanel> = panels.values.filter { frame - it.seenAt <= STALE_AFTER }
+
+    companion object {
+        private const val STALE_AFTER = 3
+        val home = GlassPanels()
+        val overlay = GlassPanels()
+        fun of(layer: GlassLayerId) = if (layer == GlassLayerId.Home) home else overlay
+        fun tickAll() { home.tick(); overlay.tick() }
+    }
 }

@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * would sit outside the hierarchy and, on Fire OS, above the window. Its own EGL thread renders
  * on demand.
  */
-class GlassTextureView(context: Context) : TextureView(context), TextureView.SurfaceTextureListener {
-    private val renderer = GlassRenderer { requestRender() }
+class GlassTextureView(context: Context, registry: GlassPanels) : TextureView(context), TextureView.SurfaceTextureListener {
+    private val renderer = GlassRenderer(registry) { requestRender() }
     private var thread: RenderThread? = null
     private val dirty = AtomicBoolean(true)
 
@@ -29,7 +29,10 @@ class GlassTextureView(context: Context) : TextureView(context), TextureView.Sur
         surfaceTextureListener = this
     }
 
-    fun setWallpaper(sharp: Bitmap?, frost: Bitmap?) { renderer.setWallpaper(sharp, frost); requestRender() }
+    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?) { renderer.setPhotoA(sharp, deep) }
+    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?) { renderer.setPhotoB(sharp, deep) }
+    fun setMix(m: Float) { if (renderer.mix != m) { renderer.mix = m; requestRender() } }
+    fun setZoom(z: Float) { if (renderer.zoom != z) { renderer.zoom = z; requestRender() } }
     fun setDark(d: Float) { renderer.dark = d; requestRender() }
     /** Frosted-only mode: no bevel, no bend. For the TV if the refraction costs too much. */
     fun setRefraction(on: Boolean) { renderer.refraction = on; requestRender() }

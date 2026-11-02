@@ -55,6 +55,7 @@ import androidx.tv.material3.Text
 import dev.sal.glass.data.AppEntry
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.tileClicks
+import dev.sal.glass.ui.glass.GlassLayerId
 import dev.sal.glass.ui.glass.GlassVariant
 import dev.sal.glass.ui.glass.PillShape
 import dev.sal.glass.ui.glass.SheetShape
@@ -99,7 +100,7 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                                 Modifier
                                     .size(84.dp)
                                     .graphicsLayer { val s = if (focused) 1.08f else 1f; scaleX = s; scaleY = s }
-                                    .glass(TileShape, GlassVariant.Tile, focused = focused, alpha = glassAlpha)
+                                    .glass(TileShape, GlassVariant.Tile, focused = focused, alpha = glassAlpha, layer = GlassLayerId.Overlay)
                                     .onFocusChanged { focused = it.isFocused }
                                     .focusable()
                                     .tileClicks({ onLaunch(app) }, {}),
@@ -130,7 +131,7 @@ fun ContextMenu(
     AnimatedVisibility(visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
         Box(Modifier.fillMaxSize().dismissOnBack(onDismiss), contentAlignment = Alignment.BottomCenter) {
             Column(
-                Modifier.padding(bottom = 136.dp).width(220.dp).glass(SheetShape, GlassVariant.Sheet).padding(8.dp).focusGroup(),
+                Modifier.padding(bottom = 136.dp).width(220.dp).glass(SheetShape, GlassVariant.Sheet, layer = GlassLayerId.Overlay).padding(8.dp).focusGroup(),
             ) {
                 Text(title, Modifier.padding(12.dp, 8.dp), color = Color.White.copy(alpha = 0.7f), style = Label)
                 listOf("Move left" to onMoveLeft, "Move right" to onMoveRight, "Set as first" to onFirst, "Hide" to onHide)
@@ -148,7 +149,7 @@ private fun MenuRow(name: String, modifier: Modifier = Modifier, onClick: () -> 
     Box(
         modifier
             .fillMaxWidth().height(40.dp)
-            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true) else Modifier)
+            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .tileClicks(onClick, {})
@@ -172,7 +173,7 @@ fun SettingsSheet(visible: Boolean, rows: List<SettingRow>, version: String, onD
     ) {
         Box(Modifier.fillMaxSize().dismissOnBack(onDismiss), contentAlignment = Alignment.CenterEnd) {
             Column(
-                Modifier.padding(end = 32.dp).width(380.dp).glass(SheetShape, GlassVariant.Sheet).padding(20.dp, 16.dp).focusGroup(),
+                Modifier.padding(end = 32.dp).width(380.dp).glass(SheetShape, GlassVariant.Sheet, layer = GlassLayerId.Overlay).padding(20.dp, 16.dp).focusGroup(),
             ) {
                 Text("Settings", Modifier.padding(bottom = 12.dp), color = Color.White, style = Title)
                 rows.forEachIndexed { i, row ->
@@ -181,7 +182,7 @@ fun SettingsSheet(visible: Boolean, rows: List<SettingRow>, version: String, onD
                         Modifier
                             .fillMaxWidth().height(48.dp)
                             .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
-                            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true) else Modifier)
+                            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
                             .onFocusChanged { focused = it.isFocused }
                             .focusable()
                             .onKeyEvent { e ->
@@ -212,7 +213,7 @@ fun Toast(message: String?, onDone: () -> Unit) {
     AnimatedVisibility(message != null, enter = fadeIn(tween(160)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Box(
-                Modifier.padding(top = 32.dp).height(36.dp).glass(PillShape, GlassVariant.Pill).padding(horizontal = 16.dp),
+                Modifier.padding(top = 32.dp).height(36.dp).glass(PillShape, GlassVariant.Pill, layer = GlassLayerId.Overlay).padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) { Text(message ?: "", color = Color.White, style = Label, maxLines = 1) }
         }

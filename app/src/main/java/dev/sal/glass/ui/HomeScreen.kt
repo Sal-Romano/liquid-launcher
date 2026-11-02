@@ -42,6 +42,7 @@ import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
 import dev.sal.glass.ui.glass.GlassBackdrop
 import dev.sal.glass.ui.glass.GlassLayer
+import dev.sal.glass.ui.glass.GlassLayerId
 import dev.sal.glass.ui.glass.GlassPanels
 import androidx.compose.runtime.withFrameNanos
 import dev.sal.glass.ui.glass.LocalGlassBackdrop
@@ -76,12 +77,12 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var glassTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(overlay, dockVisible) {
         val until = System.currentTimeMillis() + 700
-        while (System.currentTimeMillis() < until) { GlassPanels.tick(); glassTick++; delay(16) }
+        while (System.currentTimeMillis() < until) { GlassPanels.tickAll(); glassTick++; delay(16) }
     }
     // Every composed frame re-reports its panels; this advances the generation each frame so a
     // panel whose composable left (overlay closed, row recycled) is pruned within ~3 frames.
     LaunchedEffect(Unit) {
-        while (true) { withFrameNanos { }; GlassPanels.tick() }
+        while (true) { withFrameNanos { }; GlassPanels.tickAll() }
     }
 
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }
@@ -144,7 +145,9 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 },
         ) {
             WallpaperLayer(engine, config.wallpaper.kenBurns)
-            GlassLayer(engine.current?.image, engine.current?.thumb, dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f, tick = glassTick, refraction = config.glass.mode == GlassMode.Refraction)
+            val dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f
+            val refraction = config.glass.mode == GlassMode.Refraction
+            GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, glassTick, refraction)
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
@@ -159,6 +162,8 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                     modifier = Modifier.fillMaxWidth().padding(bottom = 36.dp),
                 )
             }
+            // Overlay glass paints above the clock and dock.
+            GlassLayer(GlassLayerId.Overlay, engine.current, engine.next, engine.fade, engine.zoom, dark, glassTick, refraction)
             AllApps(overlay == Overlay.AllApps, apps, onLaunch = { app ->
                 runCatching { context.startActivity(app.launchIntent) }; overlay = Overlay.None
             }, onDismiss = { overlay = Overlay.None })
