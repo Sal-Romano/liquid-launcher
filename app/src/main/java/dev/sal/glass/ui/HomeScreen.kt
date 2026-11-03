@@ -166,7 +166,9 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                     onLaunch = ::launch,
                     onContextMenu = { contextTile = it; overlay = Overlay.Context },
                     focusRequester = dockFocus,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 36.dp),
+                    // The tile's label now sits under it inside the column (26 dp), so the row
+                    // itself moves down to keep the tiles where they were.
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
                 )
             }
             // Overlay glass paints above the clock and dock.

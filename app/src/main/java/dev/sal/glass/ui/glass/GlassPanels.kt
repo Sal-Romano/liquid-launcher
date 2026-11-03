@@ -18,6 +18,11 @@ class GlassPanel(
     @Volatile var alpha: Float = 1f,
     /** Last [GlassPanels.frame] this panel was reported in; stale panels are dropped. */
     @Volatile var seenAt: Long = 0L,
+    /** Rotation about the slab's horizontal and vertical axes, Compose degrees (rotationX/Y). */
+    @Volatile var tiltX: Float = 0f,
+    @Volatile var tiltY: Float = 0f,
+    /** The camera distance Compose projects that rotation with, in px. */
+    @Volatile var cameraPx: Float = 0f,
 )
 
 /** Which GL pass a panel belongs to: under the home chrome, or above it (sheets, popovers, toasts). */
@@ -36,16 +41,20 @@ class GlassPanels {
     @Volatile var frame = 0L; private set
 
     @Synchronized
-    fun update(id: Any, rect: Rect, cornerPx: Float, kind: GlassVariant, lift: Float, alpha: Float) {
+    fun update(
+        id: Any, rect: Rect, cornerPx: Float, kind: GlassVariant, lift: Float, alpha: Float,
+        tiltX: Float = 0f, tiltY: Float = 0f, cameraPx: Float = 0f,
+    ) {
         val p = panels[id]
         if (p == null) {
-            panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha, frame)
+            panels[id] = GlassPanel(id, rect, cornerPx, kind, lift, alpha, frame, tiltX, tiltY, cameraPx)
         } else {
             p.seenAt = frame
             if (p.kind == kind && near(p.cornerPx, cornerPx) && near(p.rect, rect) &&
-                near(p.lift, lift) && near(p.alpha, alpha)
+                near(p.lift, lift) && near(p.alpha, alpha) && near(p.tiltX, tiltX) && near(p.tiltY, tiltY)
             ) return
             p.rect = rect; p.cornerPx = cornerPx; p.kind = kind; p.lift = lift; p.alpha = alpha
+            p.tiltX = tiltX; p.tiltY = tiltY; p.cameraPx = cameraPx
         }
         version++
         onChanged?.invoke()

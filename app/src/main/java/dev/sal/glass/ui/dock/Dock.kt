@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,17 +47,18 @@ fun Dock(
     val dropPx = with(LocalDensity.current) { 24.dp.toPx() }
     val centred = tiles.size <= 8
     val firstRequester = remember { FocusRequester() }
+    val trail = remember { FocusTrail() }
 
     LaunchedEffect(tiles.isNotEmpty()) { if (tiles.isNotEmpty()) runCatching { firstRequester.requestFocus() } }
 
     Box(modifier.fillMaxWidth().graphicsLayer { this.alpha = alpha; translationY = dropPx * (1f - alpha) }) {
         LazyRow(
             Modifier.fillMaxWidth().focusRequester(focusRequester).focusRestorer().focusGroup(),
-            // Vertical room for the lifted tile and its label pill; LazyRow clips to its bounds.
-            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 8.dp, bottom = 12.dp),
+            // Vertical room for the lifted, turning tile; LazyRow clips to its bounds.
+            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 12.dp),
             horizontalArrangement = if (centred) Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(16.dp),
         ) {
-            items(tiles, key = { it.id }) { tile ->
+            itemsIndexed(tiles, key = { _, it -> it.id }) { index, tile ->
                 val installed = (tile as? AppTile)?.let { AppIcons.isInstalled(context, it.packageName) } ?: true
                 val icon = when (tile) {
                     is AppTile -> if (installed) AppIcons.forPackage(context, tile.packageName) else null
@@ -79,6 +80,8 @@ fun Dock(
                     onLongClick = { onContextMenu(tile) },
                     modifier = if (tile == tiles.first()) Modifier.focusRequester(firstRequester) else Modifier,
                     glassAlpha = alpha,
+                    index = index,
+                    trail = trail,
                 )
             }
         }

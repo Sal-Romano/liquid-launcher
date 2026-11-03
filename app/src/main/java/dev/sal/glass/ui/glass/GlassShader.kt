@@ -60,6 +60,8 @@ uniform float uDark;        // 0 = white tint, 1 = smoked tint (bright backdrops
 uniform float uMag;         // convex magnification of the backdrop, about the slab centre
 uniform vec2  uLamp;        // where the photo's light is, photo coordinates 0..1 (may lie outside)
 uniform vec3  uLampCol;     // its colour, brightest channel 1
+uniform vec2  uTilt;        // slab rotation about its centre, radians: x = top edge away, y = right edge away
+uniform float uCam;         // camera distance that projects the rotation, px (Compose's, 576)
 in vec2 vFrag;
 out vec4 outColor;
 
@@ -95,6 +97,25 @@ vec3 glassNormal(vec2 p, vec2 hs, float r, float bevel, float thick) {
 vec3 leanBack(vec3 n, float a) {
     float c = cos(a), s = sin(a);
     return vec3(n.x, n.y * c - n.z * s, n.y * s + n.z * c);
+}
+// The slab's 3D rotation (uTilt), z toward the viewer: about y first, then x, as the platform
+// composes rotationX and rotationY. Columns are the slab's own axes and normal in screen space.
+mat3 slabRotation() {
+    float cx = cos(uTilt.x), sx = sin(uTilt.x), cy = cos(uTilt.y), sy = sin(uTilt.y);
+    mat3 rx = mat3(1.0, 0.0, 0.0,   0.0, cx, sx,   0.0, -sx, cx);
+    mat3 ry = mat3(cy, 0.0, -sy,   0.0, 1.0, 0.0,   sy, 0.0, cy);
+    return rx * ry;
+}
+// The point of the rotated slab under a screen pixel, in the slab's own px (its centre at the
+// origin), seen by a pinhole camera uCam px in front of the centre, which is how Compose draws
+// the icon inside the same rotation. Screen px s relative to the centre.
+vec2 slabPoint(vec2 s, mat3 R) {
+    vec3 N = R[2];
+    // Ray C + t (S - C) with C = (0, 0, uCam), S = (s, 0); it meets the plane N . P = 0 at
+    // t = N.z uCam / (N.z uCam - N.xy . s).
+    float t = N.z * uCam / (N.z * uCam - (N.x * s.x + N.y * s.y));
+    vec3 P = vec3(t * s, uCam * (1.0 - t));
+    return vec2(dot(P, R[0]), dot(P, R[1]));
 }
 vec2 refractOffset(vec3 n, float eta, float depth) {
     vec3 r = refract(vec3(0.0, 0.0, -1.0), n, eta);
@@ -140,7 +161,14 @@ vec3 lampDir(vec2 px) {
 }
 
 void main() {
-    vec2 p = vFrag - uRect.xy;
+    // p: where this pixel lands on the slab, in the slab's own px. With a tilt the slab is a
+    // rotated plane in perspective; the shape, bevel and lighting live on that plane, while the
+    // backdrop is still sampled where the pixel is on screen, since the photo does not rotate.
+    vec2 s = vFrag - uRect.xy;
+    bool tilted = dot(uTilt, uTilt) > 0.0;
+    mat3 R = mat3(1.0);
+    vec2 p = s;
+    if (tilted) { R = slabRotation(); p = slabPoint(s, R); }
     float r = min(uRadius, min(uRect.z, uRect.w) - 1.0);
     float sd = sdRoundedBox(p, uRect.zw, r);
     vec3 L = lampDir(vFrag);
@@ -164,14 +192,15 @@ void main() {
     float lean = LEAN * uLift;
     vec3 n0 = vec3(0.0, 0.0, 1.0);
     if (!middle) n0 = glassNormal(p, uRect.zw, r, uBevel, uThick);
-    vec3 n = leanBack(n0, lean);
+    // The surface normal in screen space: the slab's rotation, then the lighting lean.
+    vec3 n = leanBack(tilted ? R * n0 : n0, lean);
     float depth = uThick * (1.0 + 0.5 * uLift);
     float ring = 1.0 - glassHeight(sd, uBevel);               // 1 at the edge, 0 inside
     float inner = 1.0 - ring;
 
     // Where the view ray exits: the convex magnification over the whole slab, then the bend of
     // the bevel (and of the lean, which shifts the whole picture a little), per wavelength.
-    vec2 base = uRect.xy + p / uMag;
+    vec2 base = uRect.xy + s / uMag;
     vec2 offR = vec2(0.0), offG = vec2(0.0), offB = vec2(0.0);
     if (!middle || uLift > 0.0) {
         offR = refractOffset(n, 1.0 / (IOR - 0.02), depth);
@@ -202,10 +231,15 @@ void main() {
     // more it is compressed. The leaning face mirrors what lies above the tile across its upper
     // half, and that band slides down over it as the tile rises.
     float fromTop = clamp(0.5 - p.y / (2.0 * uRect.w), 0.0, 1.0);   // 1 at the top edge, 0 at the bottom
-    float refl = 0.5 * ring + 0.28 * uLift * inner * fromTop * fromTop;
+    // A turning slab mirrors across its whole face for as long as it turns.
+    float turn = tilted ? clamp(length(uTilt) * 4.0, 0.0, 1.0) : 0.0;
+    float refl = 0.5 * ring + 0.28 * uLift * inner * fromTop * fromTop + 0.18 * turn * inner;
     vec3 env = vec3(0.0);
-    if (!middle || uLift > 0.0) {
-        vec2 facing = boxNormal(p, uRect.zw, r) * ring + vec2(0.0, -2.0 * sin(2.0 * lean));
+    if (!middle || uLift > 0.0 || tilted) {
+        // The face's mirror direction follows its screen-space normal (rotation, then lean), at
+        // twice the physical sweep so the picture visibly travels as the slab turns.
+        vec3 Nf = leanBack(tilted ? R[2] : vec3(0.0, 0.0, 1.0), lean);
+        vec2 facing = boxNormal(p, uRect.zw, r) * ring + 4.0 * Nf.z * Nf.xy;
         env = envAt(vFrag + facing * uRes.y * 0.25, 1.0 + 4.0 * ring);
     }
     col = mix(col, env * 1.15, refl);

@@ -39,7 +39,7 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
 
     fun onSurfaceCreated() {
         program = link(GlassShader.VERTEX, GlassShader.FRAGMENT)
-        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uLod", "uDeepMix", "uTint", "uDark", "uMag", "uLamp", "uLampCol")) {
+        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uLod", "uDeepMix", "uTint", "uDark", "uMag", "uLamp", "uLampCol", "uTilt", "uCam")) {
             u[name] = GLES30.glGetUniformLocation(program, name)
         }
         GLES30.glGenTextures(4, tex, 0)
@@ -112,6 +112,11 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
             GLES30.glUniform1f(u["uTint"]!!, if (refraction) m.tint else m.tint + 0.1f)
             // The lens thickens a little as the tile lifts: the slab magnifies more and bends more.
             GLES30.glUniform1f(u["uMag"]!!, if (refraction) 1.04f + 0.04f * p.lift else 1f)
+            // The slab's 3D rotation, as Compose applies it to the icon inside: Compose degrees to
+            // radians, with the shader's sign convention (TILT_SIGN, calibrated against a rotated
+            // layer on the emulator), and the camera Compose projects with.
+            GLES30.glUniform2f(u["uTilt"]!!, Math.toRadians(p.tiltX.toDouble()).toFloat() * TILT_SIGN_X, Math.toRadians(p.tiltY.toDouble()).toFloat() * TILT_SIGN_Y)
+            GLES30.glUniform1f(u["uCam"]!!, if (p.cameraPx > 0f) p.cameraPx else 576f)
             GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
         }
         GLES30.glDisableVertexAttribArray(aPos)
@@ -119,6 +124,12 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
 
     /** Per-kind glass recipe; see [onDrawFrame]. */
     private class Material(val bevel: Float, val thick: Float, val lod: Float, val deep: Float, val tint: Float)
+
+    private companion object {
+        /** Compose rotationX/rotationY sign → the shader's (positive = top edge / right edge away). */
+        const val TILT_SIGN_X = 1f
+        const val TILT_SIGN_Y = 1f
+    }
 
     /**
      * [mip]: the sharp photos get a mipmap chain, which is what the shader samples for the slab's
