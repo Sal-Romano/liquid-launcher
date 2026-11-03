@@ -223,6 +223,6 @@ fun Toast(message: String?, onDone: () -> Unit) {
 }
 
 /** Back closes an overlay without reaching the home screen's router. */
-private fun Modifier.dismissOnBack(onDismiss: () -> Unit): Modifier = onKeyEvent { e ->
+fun Modifier.dismissOnBack(onDismiss: () -> Unit): Modifier = onKeyEvent { e ->
     if (e.key == Key.Back && e.type == KeyEventType.KeyUp) { onDismiss(); true } else e.key == Key.Back
 }

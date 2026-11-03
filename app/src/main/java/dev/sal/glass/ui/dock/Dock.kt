@@ -40,16 +40,17 @@ fun Dock(
     onLaunch: (Tile) -> Unit,
     onContextMenu: (Tile) -> Unit,
     focusRequester: FocusRequester,
+    /** One requester per tile id, so the home screen can put focus back on a given tile. */
+    tileFocus: MutableMap<String, FocusRequester>,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(220), label = "dockAlpha")
     val dropPx = with(LocalDensity.current) { 24.dp.toPx() }
     val centred = tiles.size <= 8
-    val firstRequester = remember { FocusRequester() }
     val trail = remember { FocusTrail() }
 
-    LaunchedEffect(tiles.isNotEmpty()) { if (tiles.isNotEmpty()) runCatching { firstRequester.requestFocus() } }
+    LaunchedEffect(tiles.isNotEmpty()) { if (tiles.isNotEmpty()) runCatching { tileFocus[tiles.first().id]?.requestFocus() } }
 
     Box(modifier.fillMaxWidth().graphicsLayer { this.alpha = alpha; translationY = dropPx * (1f - alpha) }) {
         LazyRow(
@@ -60,11 +61,7 @@ fun Dock(
         ) {
             itemsIndexed(tiles, key = { _, it -> it.id }) { index, tile ->
                 val installed = (tile as? AppTile)?.let { AppIcons.isInstalled(context, it.packageName) } ?: true
-                val icon = when (tile) {
-                    is AppTile -> if (installed) AppIcons.forPackage(context, tile.packageName) else null
-                    is ActionTile -> AppIcons.glyph(context, tile.action)
-                    else -> null
-                } ?: AppIcons.monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
+                val icon = AppIcons.tileIcon(context, tile)
                 val label = tile.label ?: when (tile) {
                     is AppTile -> tile.packageName.substringAfterLast('.')
                     is ActionTile -> tile.action.name
@@ -78,7 +75,7 @@ fun Dock(
                     dimmed = !installed,
                     onClick = { onLaunch(tile) },
                     onLongClick = { onContextMenu(tile) },
-                    modifier = if (tile == tiles.first()) Modifier.focusRequester(firstRequester) else Modifier,
+                    modifier = Modifier.focusRequester(tileFocus.getOrPut(tile.id) { FocusRequester() }),
                     glassAlpha = alpha,
                     index = index,
                     count = tiles.size,

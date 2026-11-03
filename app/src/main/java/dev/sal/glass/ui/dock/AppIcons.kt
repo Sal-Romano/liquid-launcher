@@ -6,22 +6,40 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.util.DisplayMetrics
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.res.ResourcesCompat
 import dev.sal.glass.R
+import dev.sal.glass.config.ActionTile
+import dev.sal.glass.config.AppTile
+import dev.sal.glass.config.FolderTile
+import dev.sal.glass.config.Tile
 
 /**
  * App icons rasterised once at 112x112 px (56 dp on the TV) and cached. Asks for the xxhdpi
- * asset so icons drawn for phones stay crisp at this size.
+ * asset so icons drawn for phones stay crisp at this size. Also the bundled brand marks (for the
+ * apps that matter here before they are installed), folder icons and letter monograms.
  */
 object AppIcons {
     private const val SIZE = 112
-    private val cache = LruCache<String, ImageBitmap>(48)
+    private val cache = LruCache<String, ImageBitmap>(64)
+
+    /** The icon a tile shows: the override, the installed app's icon, a known brand, or a monogram. */
+    fun tileIcon(context: Context, tile: Tile): ImageBitmap = when (tile) {
+        is AppTile -> tile.icon?.let { brand(context, it) }
+            ?: (if (isInstalled(context, tile.packageName)) forPackage(context, tile.packageName) else null)
+            ?: BRAND_BY_PACKAGE[tile.packageName]?.let { brand(context, it) }
+            ?: monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
+        is ActionTile -> glyph(context, tile.action)
+        is FolderTile -> folder(context, tile.id, tile.children.map { tileIcon(context, it) })
+        else -> monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
+    }
 
     fun forPackage(context: Context, packageName: String): ImageBitmap? {
         cache.get(packageName)?.let { return it }
@@ -53,6 +71,60 @@ object AppIcons {
         }
         val y = SIZE / 2f - (paint.descent() + paint.ascent()) / 2f
         c.drawText(letter.uppercaseChar().toString(), SIZE / 2f, y, paint)
+        return bmp.asImageBitmap().also { cache.put(key, it) }
+    }
+
+    private class Brand(val res: Int, val plate: Int, val glyph: Int, val inset: Float = 0.22f)
+
+    /** Bundled marks on their brand colour, drawn like app icons so they sit with the real ones. */
+    private val BRANDS = mapOf(
+        "plex" to Brand(R.drawable.brand_plex, plate = 0xFF1F2326.toInt(), glyph = 0xFFE5A00D.toInt()),
+        "playstation" to Brand(R.drawable.brand_playstation, plate = 0xFF0070D1.toInt(), glyph = Color.WHITE),
+        "xbox" to Brand(R.drawable.brand_xbox, plate = 0xFF107C10.toInt(), glyph = Color.WHITE, inset = 0.2f),
+        "wii" to Brand(R.drawable.brand_wii, plate = 0xFFF3F3F3.toInt(), glyph = 0xFF737373.toInt(), inset = 0.18f),
+    )
+
+    /** Apps whose icon we can draw before they are installed. */
+    private val BRAND_BY_PACKAGE = mapOf(
+        "com.plexapp.android" to "plex",
+        "org.dolphinemu.dolphinemu" to "wii",
+        "com.playstation.remoteplay" to "playstation",
+        "com.microsoft.xboxone.smartglass" to "xbox",
+    )
+
+    fun brand(context: Context, key: String): ImageBitmap? {
+        val b = BRANDS[key] ?: return null
+        val cacheKey = "brand:$key"
+        cache.get(cacheKey)?.let { return it }
+        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val r = SIZE * 0.22f
+        c.drawRoundRect(0f, 0f, SIZE.toFloat(), SIZE.toFloat(), r, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = b.plate })
+        val d = context.getDrawable(b.res) ?: return null
+        d.setTint(b.glyph)
+        val inset = (SIZE * b.inset).toInt()
+        d.setBounds(inset, inset, SIZE - inset, SIZE - inset)
+        d.draw(c)
+        return bmp.asImageBitmap().also { cache.put(cacheKey, it) }
+    }
+
+    /** A folder shows its first four children small, two by two, like an iOS folder. */
+    fun folder(context: Context, id: String, children: List<ImageBitmap>): ImageBitmap {
+        val key = "folder:$id:${children.size}"
+        cache.get(key)?.let { return it }
+        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val cell = 46; val gap = 8; val total = cell * 2 + gap
+        val x0 = (SIZE - total) / 2; val y0 = (SIZE - total) / 2
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        children.take(4).forEachIndexed { i, img ->
+            val x = x0 + (i % 2) * (cell + gap); val y = y0 + (i / 2) * (cell + gap)
+            c.drawBitmap(img.asAndroidBitmap(), null, Rect(x, y, x + cell, y + cell), paint)
+        }
+        if (children.isEmpty()) {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(120, 255, 255, 255) }
+            for (i in 0 until 4) { val x = x0 + (i % 2) * (cell + gap); val y = y0 + (i / 2) * (cell + gap); c.drawRoundRect(x.toFloat(), y.toFloat(), (x + cell).toFloat(), (y + cell).toFloat(), 10f, 10f, p) }
+        }
         return bmp.asImageBitmap().also { cache.put(key, it) }
     }
 

@@ -44,6 +44,13 @@ class ConfigStore(private val context: Context) {
                 tiles += AppTile(app.packageName, "${app.packageName}/${app.activityName}", app.label)
             }
         }
+        // Games: a folder that opens as its own row. Wii through Dolphin, PS5 through PS Remote
+        // Play, Xbox through the Xbox app; all drawn with their marks even before they are installed.
+        tiles += FolderTile("games", "Games", listOf(
+            AppTile("wii", "org.dolphinemu.dolphinemu/org.dolphinemu.dolphinemu.ui.main.TvMainActivity", "Wii", requirePackage = false, icon = "wii"),
+            AppTile("ps5", "com.playstation.remoteplay/com.playstation.remoteplay.MainActivity", "PS5", requirePackage = false, icon = "playstation"),
+            AppTile("xbox", "com.microsoft.xboxone.smartglass/com.microsoft.xboxone.smartglass.MainActivity", "Xbox", requirePackage = false, icon = "xbox"),
+        ))
         tiles += ActionTile("all-apps", Action.AllApps, "All apps")
         return LauncherConfig(rows = listOf(TileRow("dock", tiles = tiles)), hidden = Apps.HIDDEN_PACKAGES)
     }

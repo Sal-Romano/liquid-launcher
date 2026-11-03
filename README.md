@@ -14,7 +14,10 @@ Early. Everything below runs on an Android TV emulator; the first run on the TV 
 
 - Wallpapers from `/sdcard/Pictures/Wallpapers` (push photos over adb): shuffle without repeats, 1.2 s crossfade, slow Ken Burns push-in, skip and pause from the remote.
 - Clock block centred at 43 % of the height, updates on the minute, 12/24 h, three sizes.
-- A dock of up to eight tiles driven by `launcher.json` (apps, intents, actions, with Home Assistant entities and folders reserved). Hold OK on a tile to move or hide it.
+- A dock of up to eight tiles driven by `launcher.json` (apps, intents, actions, folders, with Home Assistant entities reserved). Hold OK on a tile to move or hide it. A focused tile lifts, pivots and shows its name underneath.
+- Folders: a tile that holds other tiles (the default config ships a Games folder for Wii, PS5 and Xbox). It shows its children small, two by two, and opens as its own row in the dock's place; Back returns to it.
+- Top right: the network state (Wi-Fi bars, Ethernet, or struck through) and a glass settings button, reached with Up from the dock.
+- Brand marks for Plex, PlayStation, Xbox and Wii, drawn like app icons so those tiles look right before the apps are installed (`icon` on an app tile).
 - All apps grid, settings sheet, and a frosted-only glass mode for when the GPU disagrees.
 - Pre-rendered blurs cached on disk, about 30 KB per photo, rendered once in the background.
 

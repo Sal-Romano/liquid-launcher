@@ -59,3 +59,10 @@ SOFTWARE.
 ## Inter
 
 The Inter typeface (res/font) is used under the SIL Open Font License 1.1; see INTER-OFL.txt.
+
+## Brand marks
+
+The Plex, PlayStation and Wii glyphs in `res/drawable/brand_*.xml` come from
+[simple-icons](https://github.com/simple-icons/simple-icons) (CC0 1.0). The Xbox glyph comes from
+[Font Awesome Free](https://fontawesome.com/license/free) (icons: CC BY 4.0). The marks themselves
+are trademarks of their owners and are used only to identify the corresponding apps on this launcher.

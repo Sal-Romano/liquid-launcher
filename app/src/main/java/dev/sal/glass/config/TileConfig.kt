@@ -22,6 +22,8 @@ data class AppTile(
     override val label: String? = null,
     /** Hide the tile when this package is missing; false shows it dimmed with an install hint. */
     val requirePackage: Boolean = true,
+    /** A bundled brand mark to draw instead of the app's icon: "plex", "playstation", "xbox", "wii". */
+    val icon: String? = null,
 ) : Tile {
     val packageName: String get() = component.substringBefore('/')
 }

@@ -35,6 +35,7 @@ import dev.sal.glass.config.ActionTile
 import dev.sal.glass.config.AppTile
 import dev.sal.glass.config.ClockSize
 import dev.sal.glass.config.ConfigStore
+import dev.sal.glass.config.FolderTile
 import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
@@ -43,6 +44,8 @@ import dev.sal.glass.data.Apps
 import dev.sal.glass.ui.clock.Clock
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
+import dev.sal.glass.ui.dock.FolderRow
+import dev.sal.glass.ui.status.TopRight
 import dev.sal.glass.ui.glass.GlassBackdrop
 import dev.sal.glass.ui.glass.GlassLayer
 import dev.sal.glass.ui.glass.GlassLayerId
@@ -59,7 +62,7 @@ import dev.sal.glass.wallpaper.WallpaperEngine
 import dev.sal.glass.wallpaper.WallpaperLayer
 import kotlinx.coroutines.delay
 
-private enum class Overlay { None, AllApps, Settings, Context }
+private enum class Overlay { None, AllApps, Settings, Context, Folder }
 
 /**
  * Photo → clock → dock → overlays. One key router at the root: in the idle state any key only
@@ -73,8 +76,18 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var lastKeyAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var overlay by remember { mutableStateOf(Overlay.None) }
     var contextTile by remember { mutableStateOf<Tile?>(null) }
+    var openFolder by remember { mutableStateOf<FolderTile?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     val dockFocus = remember { FocusRequester() }
+    val tileFocus = remember { mutableMapOf<String, FocusRequester>() }
+    // A tile to put focus back on once the dock has returned (after a folder closes).
+    var pendingDockFocus by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pendingDockFocus) {
+        val id = pendingDockFocus ?: return@LaunchedEffect
+        delay(80)
+        runCatching { tileFocus[id]?.requestFocus() ?: dockFocus.requestFocus() }
+        pendingDockFocus = null
+    }
     val apps = remember(config) { Apps.launchable(context).filter { it.packageName !in config.hidden } }
     // While an overlay or the dock animates, nudge the GL layer every frame so its panels track.
     var glassTick by remember { mutableLongStateOf(0L) }
@@ -117,6 +130,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 Action.NextWallpaper -> engine.skip()
                 Action.PauseSlideshow -> { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed" }
             }
+            is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
             else -> toast = "Coming soon"
         }
     }
@@ -159,16 +173,30 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
                 Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
             }
+            // Network state and the settings button, top right, inside the overscan margin.
+            TopRight(
+                visible = dockVisible && chrome && (overlay == Overlay.None || overlay == Overlay.Folder),
+                onSettings = { overlay = Overlay.Settings },
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 40.dp),
+            )
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 Dock(
                     tiles = config.dockTiles,
-                    visible = dockVisible && chrome,
+                    // The dock drops away while a folder's row stands in its place.
+                    visible = dockVisible && chrome && openFolder == null,
                     onLaunch = ::launch,
                     onContextMenu = { contextTile = it; overlay = Overlay.Context },
                     focusRequester = dockFocus,
+                    tileFocus = tileFocus,
                     // The tile's label now sits under it inside the column (26 dp), so the row
                     // itself moves down to keep the tiles where they were.
                     modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                )
+                FolderRow(
+                    folder = openFolder,
+                    onLaunch = ::launch,
+                    onDismiss = { val id = openFolder?.id; openFolder = null; overlay = Overlay.None; pendingDockFocus = id },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 22.dp),
                 )
             }
             // Overlay glass paints above the clock and dock.

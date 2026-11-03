@@ -110,7 +110,7 @@ fun Tile(
             contentAlignment = Alignment.Center,
         ) {
             if (icon != null) {
-                Image(icon, label, Modifier.size(56.dp).graphicsLayer { alpha = if (dimmed) 0.45f else 1f })
+                Image(icon, label, Modifier.size(56.dp).graphicsLayer { alpha = if (dimmed) 0.62f else 1f })
             }
             if (dimmed) {
                 Text(
