@@ -20,12 +20,14 @@ import androidx.compose.ui.platform.LocalDensity
 enum class GlassVariant { Tile, Pill, Sheet }
 
 /**
- * Compose's default camera distance for 3D rotations (graphicsLayer.cameraDistance), which the
- * platform turns into 72 px per unit regardless of density, so a rotated layer is projected from
- * 576 px in front of its pivot. The GL slab is projected with the same camera so it stays under
- * the icon it carries.
+ * The camera that projects a panel's 3D rotation (graphicsLayer.cameraDistance). The platform
+ * turns the unit into 72 px regardless of density (Compose's default 8 is 576 px); 4.2 puts the
+ * camera about 300 px in front of the pivot, close enough that a turned 84 dp tile reads as a
+ * slab in perspective from the couch. The GL slab is projected with the same camera so it stays
+ * under the icon it carries (verified within 1 px at a held 20 degree turn).
  */
-const val GlassCameraPx = 8f * 72f
+const val GlassCameraUnits = 4.2f
+const val GlassCameraPx = GlassCameraUnits * 72f
 
 /**
  * Marks a composable as a glass panel. The glass itself is painted by a [GlassLayer] (OpenGL ES,
@@ -97,6 +99,7 @@ fun Modifier.glass(
                 translationY = -liftPx * lift
                 rotationX = tiltX
                 rotationY = tiltY
+                cameraDistance = GlassCameraUnits
             } else Modifier,
         )
         .clip(shape)

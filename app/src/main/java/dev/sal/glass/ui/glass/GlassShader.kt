@@ -231,9 +231,7 @@ void main() {
     // more it is compressed. The leaning face mirrors what lies above the tile across its upper
     // half, and that band slides down over it as the tile rises.
     float fromTop = clamp(0.5 - p.y / (2.0 * uRect.w), 0.0, 1.0);   // 1 at the top edge, 0 at the bottom
-    // A turning slab mirrors across its whole face for as long as it turns.
-    float turn = tilted ? clamp(length(uTilt) * 4.0, 0.0, 1.0) : 0.0;
-    float refl = 0.5 * ring + 0.28 * uLift * inner * fromTop * fromTop + 0.18 * turn * inner;
+    float refl = 0.5 * ring + 0.28 * uLift * inner * fromTop * fromTop;
     vec3 env = vec3(0.0);
     if (!middle || uLift > 0.0 || tilted) {
         // The face's mirror direction follows its screen-space normal (rotation, then lean), at

@@ -55,7 +55,7 @@ fun Dock(
         LazyRow(
             Modifier.fillMaxWidth().focusRequester(focusRequester).focusRestorer().focusGroup(),
             // Vertical room for the lifted, turning tile; LazyRow clips to its bounds.
-            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 12.dp),
+            contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 28.dp, bottom = 12.dp),
             horizontalArrangement = if (centred) Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(16.dp),
         ) {
             itemsIndexed(tiles, key = { _, it -> it.id }) { index, tile ->
@@ -81,6 +81,7 @@ fun Dock(
                     modifier = if (tile == tiles.first()) Modifier.focusRequester(firstRequester) else Modifier,
                     glassAlpha = alpha,
                     index = index,
+                    count = tiles.size,
                     trail = trail,
                 )
             }

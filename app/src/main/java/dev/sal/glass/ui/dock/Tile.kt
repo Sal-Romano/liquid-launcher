@@ -7,7 +7,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,12 +48,15 @@ class FocusTrail { var last: Int = -1 }
 
 /**
  * One 84 dp glass squircle. On focus it lifts (scale 1.12, -6 dp) with a critically damped
- * spring, nods: it turns [NodDegrees] about its vertical axis away from the side focus came from
- * and springs back flat with a little overshoot, so the glass visibly pivots and its reflection
- * sweeps across; and after the lift settles its name fades in underneath, plain text with a
- * shadow. The column is always exactly [TileColumnWidth] wide: the label is laid out unbounded
- * and centred under the column, overflowing it on both sides when the name is wider than the
- * tile, so the row never reflows when focus moves.
+ * spring and pivots about its vertical axis: it is kicked [NodDegrees] away from the side focus
+ * came from and swings, with a little overshoot, to its resting angle, which turns it toward the
+ * middle of the screen by up to [RestDegrees] at the ends of the row (a tile on the left shows
+ * you its right edge receding, one on the right the opposite, the centre one faces you square).
+ * The glass slab is drawn in the same perspective, so the reflection sweeps across the pane as it
+ * turns. After the lift settles its name fades in underneath, plain text with a shadow. The
+ * column is always exactly [TileColumnWidth] wide: the label is laid out unbounded and centred
+ * under the column, overflowing it on both sides when the name is wider than the tile, so the row
+ * never reflows when focus moves.
  */
 @Composable
 fun Tile(
@@ -66,31 +68,35 @@ fun Tile(
     modifier: Modifier = Modifier,
     glassAlpha: Float = 1f,
     index: Int = 0,
+    count: Int = 1,
     trail: FocusTrail? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     var cameFrom by remember { mutableStateOf(0f) }
     val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "lift")
     val liftPx = with(LocalDensity.current) { 6.dp.toPx() }
-    val nod = remember { Animatable(0f) }
+    // Positive rotationY recedes the right edge: a tile left of the middle turns toward it.
+    val middle = (count - 1) / 2f
+    val restTilt = if (count > 1) (middle - index) / middle * RestDegrees else 0f
+    val turn = remember { Animatable(0f) }
     LaunchedEffect(focused) {
-        if (focused && cameFrom != 0f) {
-            nod.snapTo(cameFrom * NodDegrees)
-            nod.animateTo(0f, spring(dampingRatio = 0.45f, stiffness = 260f))
+        if (focused) {
+            if (cameFrom != 0f) turn.snapTo(restTilt + cameFrom * NodDegrees)
+            turn.animateTo(restTilt, spring(dampingRatio = 0.42f, stiffness = 240f))
         } else {
-            nod.snapTo(0f)
+            turn.animateTo(0f, spring(dampingRatio = 1f, stiffness = 420f))
         }
     }
 
     Column(modifier.width(TileColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
-        // The lift, nod and clip live inside glass(): the glass slab and the icon come from the
+        // The lift, turn and clip live inside glass(): the glass slab and the icon come from the
         // same values and the same layout rect. Do not add a graphicsLayer before it.
         Box(
             Modifier
                 .size(84.dp)
                 .glass(
                     TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha,
-                    liftScale = 0.12f, liftPx = liftPx, tiltY = nod.value + (if (focused) TiltHold else 0f),
+                    liftScale = 0.12f, liftPx = liftPx, tiltY = turn.value,
                 )
                 .onFocusChanged {
                     if (it.isFocused && trail != null) {
@@ -103,7 +109,6 @@ fun Tile(
                 .tileClicks(onClick, onLongClick),
             contentAlignment = Alignment.Center,
         ) {
-            if (DebugFill) Box(Modifier.size(84.dp).background(Color.Red.copy(alpha = 0.35f)))
             if (icon != null) {
                 Image(icon, label, Modifier.size(56.dp).graphicsLayer { alpha = if (dimmed) 0.45f else 1f })
             }
@@ -114,9 +119,9 @@ fun Tile(
                 )
             }
         }
-        // The name, under the tile, once the lift has settled.
+        // The name, under the tile, once the lift and most of the swing have settled.
         Box(Modifier.width(TileColumnWidth).height(26.dp).padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
-            androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(tween(220, delayMillis = 140)), exit = fadeOut(tween(100))) {
+            androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(tween(220, delayMillis = 240)), exit = fadeOut(tween(100))) {
                 Text(
                     label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                     modifier = Modifier.wrapContentWidth(Alignment.CenterHorizontally, unbounded = true).widthIn(max = 220.dp),
@@ -133,9 +138,8 @@ fun Tile(
 /** Keeps the dock's rhythm: a tile column is always 84 wide and 84 + 26 tall. */
 val TileColumnWidth = 84.dp
 
-/** How far a tile turns when focus lands on it, degrees about its vertical axis. */
-const val NodDegrees = 14f
+/** The kick when focus lands: degrees about the vertical axis, away from where focus came from. */
+const val NodDegrees = 22f
 
-/** Calibration only: a steady extra rotationY on the focused tile, and a fill to show its clip. */
-private const val TiltHold = 0f
-private const val DebugFill = false
+/** The resting turn toward the middle of the screen for a focused tile at either end of the row. */
+const val RestDegrees = 20f
