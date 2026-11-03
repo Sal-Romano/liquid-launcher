@@ -11,6 +11,7 @@ import android.opengl.EGLSurface
 import android.opengl.GLES30
 import android.util.Log
 import android.view.TextureView
+import dev.sal.glass.wallpaper.SceneLight
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,8 +30,8 @@ class GlassTextureView(context: Context, registry: GlassPanels) : TextureView(co
         surfaceTextureListener = this
     }
 
-    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?) { renderer.setPhotoA(sharp, deep) }
-    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?) { renderer.setPhotoB(sharp, deep) }
+    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { renderer.setPhotoA(sharp, deep, light) }
+    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { renderer.setPhotoB(sharp, deep, light) }
     fun setMix(m: Float) { if (renderer.mix != m) { renderer.mix = m; requestRender() } }
     fun setZoom(z: Float) { if (renderer.zoom != z) { renderer.zoom = z; requestRender() } }
     fun setDark(d: Float) { renderer.dark = d; requestRender() }

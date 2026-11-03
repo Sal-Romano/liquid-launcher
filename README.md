@@ -2,7 +2,7 @@
 
 A home screen for a Fire TV (Hisense U6, Fire OS 8, Android 11) that is a photo frame first and a launcher second. Your photos fill the screen, the time floats in the middle, and one row of liquid-glass tiles fades away when you stop touching the remote.
 
-The glass is real refraction, not a painted blur: a GLSL ES 3.0 fragment shader draws every panel as a slab with a bevelled edge, bends the photo behind it through `refract()` at IOR 1.52 with a little dispersion, softens the middle from the photo's own mipmap chain, and lights the rim. It runs in a `TextureView` between the wallpaper and the Compose chrome, because Android 11 has no `RenderEffect` and the TV's Mali-G52 cannot afford a per-frame blur.
+The glass is real refraction, not a painted blur: a GLSL ES 3.0 fragment shader draws every panel as a slab with a bevelled edge, bends the photo behind it through `refract()` at IOR 1.52 with a little dispersion, softens the middle from the photo's own mipmap chain, and mirrors the photo around the panel on its rim. The light is the photo's own: each photo's brightest patch is found from its thumbnail when it is decoded (about a millisecond, nothing stored) and the glass hangs its lamp there, so a sunset lights the tiles from the sunset's side in its colour, every tile catches the glint at its own angle, and a focused tile leans back a few degrees so the reflection slides across it. It runs in a `TextureView` between the wallpaper and the Compose chrome, because Android 11 has no `RenderEffect` and the TV's Mali-G52 cannot afford a per-frame blur.
 
 Kotlin, Jetpack Compose for TV. The app is called Glass internally (package `dev.sal.glass`); the design spec is in [DESIGN.md](DESIGN.md).
 

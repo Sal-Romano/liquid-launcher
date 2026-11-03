@@ -21,8 +21,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** One decoded wallpaper plus its frosted copy for the glass panels. */
-class Frame(val file: File, val image: Bitmap, val thumb: Bitmap, val deep: Bitmap) {
+/** One decoded wallpaper, its blurred copies for the glass, and where its light comes from. */
+class Frame(val file: File, val image: Bitmap, val thumb: Bitmap, val deep: Bitmap, val light: SceneLight = SceneLight.DEFAULT) {
     val imageBitmap: ImageBitmap = image.asImageBitmap()
 }
 
@@ -118,7 +118,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         val frame = withContext(Dispatchers.IO) {
             val image = Wallpapers.load(file) ?: return@withContext null
             val (deep, frost) = blurs.blursFor(file, image)
-            Frame(file, image, frost, deep)
+            Frame(file, image, frost, deep, SceneLight.of(frost))
         } ?: return decodeNext()
         lastShown = file
         Log.i("Glass", "wallpaper ${file.name} decoded in ${SystemClock.elapsedRealtime() - t0} ms")

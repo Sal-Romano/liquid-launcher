@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.opengl.GLES30
 import android.opengl.GLUtils
 import android.util.Log
+import dev.sal.glass.wallpaper.SceneLight
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -23,7 +24,7 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
     private var height = 1
     private val u = HashMap<String, Int>()
 
-    private class Pending(val sharp: Bitmap?, val deep: Bitmap?)
+    private class Pending(val sharp: Bitmap?, val deep: Bitmap?, val light: SceneLight?)
     @Volatile private var pendingA: Pending? = null
     @Volatile private var pendingB: Pending? = null
     private var lastA: Pending? = null
@@ -33,12 +34,12 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
     @Volatile var dark = 0f
     @Volatile var refraction = true
 
-    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?) { pendingA = Pending(sharp, deep); requestRender() }
-    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?) { pendingB = Pending(sharp, deep); requestRender() }
+    fun setPhotoA(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { pendingA = Pending(sharp, deep, light); requestRender() }
+    fun setPhotoB(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { pendingB = Pending(sharp, deep, light); requestRender() }
 
     fun onSurfaceCreated() {
         program = link(GlassShader.VERTEX, GlassShader.FRAGMENT)
-        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uLod", "uDeepMix", "uTint", "uDark", "uMag")) {
+        for (name in listOf("uSharpA", "uDeepA", "uSharpB", "uDeepB", "uMix", "uZoom", "uRes", "uRect", "uRadius", "uBevel", "uThick", "uLift", "uAlpha", "uLod", "uDeepMix", "uTint", "uDark", "uMag", "uLamp", "uLampCol")) {
             u[name] = GLES30.glGetUniformLocation(program, name)
         }
         GLES30.glGenTextures(4, tex, 0)
@@ -71,6 +72,14 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
         GLES30.glUniform1f(u["uZoom"]!!, zoom)
         GLES30.glUniform2f(u["uRes"]!!, width.toFloat(), height.toFloat())
         GLES30.glUniform1f(u["uDark"]!!, dark)
+        // The lamp hangs where the photo's light is, and crosses over with the photos.
+        val hasB = lastB?.sharp != null
+        val la = lastA?.light ?: SceneLight.DEFAULT
+        val lb = if (hasB) lastB?.light ?: SceneLight.DEFAULT else la
+        val lm = if (hasB) mix else 0f
+        fun lerp(a: Float, b: Float) = a + (b - a) * lm
+        GLES30.glUniform2f(u["uLamp"]!!, lerp(la.x, lb.x), lerp(la.y, lb.y))
+        GLES30.glUniform3f(u["uLampCol"]!!, lerp(la.r, lb.r), lerp(la.g, lb.g), lerp(la.b, lb.b))
 
         val aPos = GLES30.glGetAttribLocation(program, "aPos")
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo)
