@@ -82,7 +82,9 @@ fun Tile(
     LaunchedEffect(focused) {
         if (focused) {
             if (cameFrom != 0f) turn.snapTo(restTilt + cameFrom * NodDegrees)
-            turn.animateTo(restTilt, spring(dampingRatio = 0.42f, stiffness = 240f))
+            // A slow, slightly underdamped swing (about 0.9 s): long enough to read as a pane
+            // turning even at a low frame rate, and it overshoots once before it settles.
+            turn.animateTo(restTilt, spring(dampingRatio = 0.45f, stiffness = 170f))
         } else {
             turn.animateTo(0f, spring(dampingRatio = 1f, stiffness = 420f))
         }
@@ -139,7 +141,7 @@ fun Tile(
 val TileColumnWidth = 84.dp
 
 /** The kick when focus lands: degrees about the vertical axis, away from where focus came from. */
-const val NodDegrees = 22f
+const val NodDegrees = 26f
 
 /** The resting turn toward the middle of the screen for a focused tile at either end of the row. */
 const val RestDegrees = 20f

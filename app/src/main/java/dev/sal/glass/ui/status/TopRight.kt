@@ -90,7 +90,7 @@ private val ButtonShape = SquircleShape(13.dp, 0.6f)
  * and Down returns. Fades with the dock when the screen goes idle.
  */
 @Composable
-fun TopRight(visible: Boolean, onSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun TopRight(visible: Boolean, onSettings: () -> Unit, onFocus: (Boolean) -> Unit = {}, modifier: Modifier = Modifier) {
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(220), label = "topRightAlpha")
     val net = rememberNetworkStatus()
     val liftPx = with(LocalDensity.current) { 2.dp.toPx() }
@@ -105,7 +105,7 @@ fun TopRight(visible: Boolean, onSettings: () -> Unit, modifier: Modifier = Modi
             Modifier
                 .size(42.dp)
                 .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = alpha, liftScale = 0.12f, liftPx = liftPx)
-                .onFocusChanged { focused = it.isFocused }
+                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
                 .focusable()
                 .tileClicks(onSettings, {}),
             contentAlignment = Alignment.Center,

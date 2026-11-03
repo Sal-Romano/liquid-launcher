@@ -77,6 +77,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var overlay by remember { mutableStateOf(Overlay.None) }
     var contextTile by remember { mutableStateOf<Tile?>(null) }
     var openFolder by remember { mutableStateOf<FolderTile?>(null) }
+    var topFocused by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     val dockFocus = remember { FocusRequester() }
     val tileFocus = remember { mutableMapOf<String, FocusRequester>() }
@@ -154,7 +155,8 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                     when (e.key) {
                         Key.Back -> { if (!wasIdle) dockVisible = false; true }
                         Key.Menu -> { overlay = Overlay.Settings; true }
-                        Key.DirectionDown -> { overlay = Overlay.AllApps; true }
+                        // Down from the dock opens All apps; from the settings button it just comes back down.
+                        Key.DirectionDown -> if (topFocused) false else { overlay = Overlay.AllApps; true }
                         Key.MediaPlayPause -> { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed"; true }
                         Key.MediaFastForward, Key.MediaNext -> { engine.skip(); true }
                         else -> wasIdle // a wake press is consumed; the next one navigates
@@ -177,6 +179,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             TopRight(
                 visible = dockVisible && chrome && (overlay == Overlay.None || overlay == Overlay.Folder),
                 onSettings = { overlay = Overlay.Settings },
+                onFocus = { topFocused = it },
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 40.dp),
             )
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

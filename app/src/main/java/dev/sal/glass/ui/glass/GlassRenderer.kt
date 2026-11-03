@@ -56,7 +56,29 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
         GLES30.glViewport(0, 0, w, h)
     }
 
+    // Frame-time statistics, logged once a second while frames are drawn (debug builds only).
+    private var statStart = 0L
+    private var statFrames = 0
+    private var statNanos = 0L
+    private var statWorst = 0L
+
     fun onDrawFrame() {
+        val t0 = System.nanoTime()
+        drawFrame()
+        if (dev.sal.glass.BuildConfig.DEBUG) {
+            val dt = System.nanoTime() - t0
+            statFrames++; statNanos += dt; if (dt > statWorst) statWorst = dt
+            val now = System.currentTimeMillis()
+            if (statStart == 0L) statStart = now
+            if (now - statStart >= 1000) {
+                val panels = registry.snapshot().count { it.alpha > 0.005f }
+                Log.d("Glass", "glass frames: $statFrames in ${now - statStart} ms, avg ${statNanos / statFrames / 1000} us, worst ${statWorst / 1000} us, $panels panels")
+                statStart = now; statFrames = 0; statNanos = 0L; statWorst = 0L
+            }
+        }
+    }
+
+    private fun drawFrame() {
         pendingA?.let { p -> p.sharp?.let { upload(tex[0], it, mip = true) }; p.deep?.let { upload(tex[1], it, mip = false) }; lastA = p; pendingA = null }
         pendingB?.let { p -> p.sharp?.let { upload(tex[2], it, mip = true) }; p.deep?.let { upload(tex[3], it, mip = false) }; lastB = p; pendingB = null }
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
