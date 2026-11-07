@@ -28,18 +28,23 @@ class ConfigStore(private val context: Context) {
         return defaults().also { persist(it) }
     }
 
-    /** Plex first even if absent, then the big streaming apps that are installed, then All apps. */
+    /** Plex first even if absent, then the big streaming apps (Spotify even if absent), then All apps. */
     private fun defaults(): LauncherConfig {
         val installed = Apps.launchable(context).associateBy { it.packageName }
         val tiles = mutableListOf<Tile>()
         tiles += AppTile("plex", "com.plexapp.android/com.plexapp.plex.activities.SplashActivity", "Plex", requirePackage = false)
-        for ((pkg, label) in PREFERRED) {
-            val app = installed[pkg] ?: continue
-            tiles += AppTile(pkg, "${app.packageName}/${app.activityName}", label)
+        for (p in PREFERRED) {
+            val app = installed[p.pkg]
+            tiles += when {
+                app != null -> AppTile(p.pkg, "${app.packageName}/${app.activityName}", p.label)
+                // Not installed yet but wanted anyway: dimmed with an install hint, like Plex.
+                p.component != null -> AppTile(p.pkg, p.component, p.label, requirePackage = false)
+                else -> continue
+            }
         }
         // Nothing preferred is installed (a fresh device, the emulator): seat the first few real
-        // apps so the dock is a dock and not two lonely tiles.
-        if (tiles.size == 1) {
+        // apps so the dock is a dock and not a few lonely tiles.
+        if (PREFERRED.none { it.pkg in installed }) {
             installed.values.filter { it.packageName !in Apps.HIDDEN_PACKAGES }.take(5).forEach { app ->
                 tiles += AppTile(app.packageName, "${app.packageName}/${app.activityName}", app.label)
             }
@@ -94,11 +99,14 @@ class ConfigStore(private val context: Context) {
     }
 
     companion object {
+        /** Dock order after Plex. A [component] keeps the tile even when the app is missing. */
+        private class Preferred(val pkg: String, val label: String, val component: String? = null)
+
         private val PREFERRED = listOf(
-            "com.netflix.ninja" to "Netflix",
-            "com.amazon.firebat" to "Prime Video",
-            "com.amazon.spiderpork" to "Luna",
-            "com.amazon.bueller.music" to "Amazon Music",
+            Preferred("com.netflix.ninja", "Netflix"),
+            Preferred("com.spotify.tv.android", "Spotify", component = "com.spotify.tv.android/com.spotify.tv.android.SpotifyTVActivity"),
+            Preferred("com.amazon.spiderpork", "Luna"),
+            Preferred("com.amazon.bueller.music", "Amazon Music"),
         )
     }
 }

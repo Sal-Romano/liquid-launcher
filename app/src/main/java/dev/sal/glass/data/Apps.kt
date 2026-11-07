@@ -10,7 +10,7 @@ data class AppEntry(
     val packageName: String,
     val activityName: String,
     val label: String,
-    /** The 16:9 Leanback banner when the app ships one (Netflix, Prime, Luna); null otherwise (Amazon Music). */
+    /** The 16:9 Leanback banner when the app ships one (Netflix, Luna, Spotify); null otherwise (Amazon Music). */
     val banner: Drawable?,
     /** The square app icon, for apps without a banner. */
     val icon: Drawable,

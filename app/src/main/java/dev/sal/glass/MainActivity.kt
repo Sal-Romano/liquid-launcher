@@ -1,6 +1,9 @@
 package dev.sal.glass
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -9,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import dev.sal.glass.config.ConfigStore
@@ -27,8 +31,12 @@ class MainActivity : ComponentActivity() {
     private val store by lazy { ConfigStore(this) }
     /** Files dropped on the TV from a laptop or phone land here and open on screen. */
     private val drop by lazy { DropServer(File(filesDir, "drop")) }
-    /** Bumped on every Home press (onNewIntent) so the screen wakes and rescans. */
+    /** Bumped on every Home press (onNewIntent) and package change so the screen wakes and rescans. */
     private var wake by mutableLongStateOf(0L)
+    /** An app installed or removed while we are up (the Appstore in front, adb): relight its tile. */
+    private val packages = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) { wake = System.currentTimeMillis() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +47,10 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = Unit
         })
+        ContextCompat.registerReceiver(this, packages, IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         setContent { HomeScreen(engine, store, wake) }
     }
 
@@ -53,6 +65,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(packages)
         drop.stop()
         super.onDestroy()
     }

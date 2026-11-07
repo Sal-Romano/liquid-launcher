@@ -11,6 +11,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.util.DisplayMetrics
 import android.util.LruCache
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -54,16 +57,24 @@ object AppIcons {
     }
 
     private val installed = HashMap<String, Boolean>()
+    /** Bumped whenever the cache is dropped, so a composition that asked [isInstalled] recomposes. */
+    private var installedGeneration by mutableIntStateOf(0)
 
     /** Cached: a package-manager round trip per tile per recomposition is real time on the TV. */
-    fun isInstalled(context: Context, packageName: String): Boolean = synchronized(installed) {
-        installed.getOrPut(packageName) {
-            try { context.packageManager.getPackageInfo(packageName, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
+    fun isInstalled(context: Context, packageName: String): Boolean {
+        installedGeneration // read in composition: subscribes the caller to forgetInstalled()
+        return synchronized(installed) {
+            installed.getOrPut(packageName) {
+                try { context.packageManager.getPackageInfo(packageName, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
+            }
         }
     }
 
-    /** Called when the launcher comes back to the front: an app may have been installed meanwhile. */
-    fun forgetInstalled() = synchronized(installed) { installed.clear() }
+    /** Called when the launcher comes back to the front or a package changes: an app may have been installed meanwhile. */
+    fun forgetInstalled() {
+        synchronized(installed) { installed.clear() }
+        installedGeneration++
+    }
 
     /** First letter on a soft dark disc, for apps with no usable icon and for placeholders. */
     fun monogram(context: Context, letter: Char): ImageBitmap {
@@ -91,6 +102,7 @@ object AppIcons {
         "playstation" to Brand(R.drawable.brand_playstation, plate = 0xFF0070D1.toInt(), glyph = Color.WHITE),
         "xbox" to Brand(R.drawable.brand_xbox, plate = 0xFF107C10.toInt(), glyph = Color.WHITE, inset = 0.2f),
         "wii" to Brand(R.drawable.brand_wii, plate = 0xFFF3F3F3.toInt(), glyph = 0xFF737373.toInt(), inset = 0.18f),
+        "spotify" to Brand(R.drawable.brand_spotify, plate = 0xFF1DB954.toInt(), glyph = Color.WHITE, inset = 0.1f),
     )
 
     /** Apps whose icon we can draw before they are installed. */
@@ -99,6 +111,7 @@ object AppIcons {
         "org.dolphinemu.dolphinemu" to "wii",
         "com.playstation.remoteplay" to "playstation",
         "com.microsoft.xboxone.smartglass" to "xbox",
+        "com.spotify.tv.android" to "spotify",
     )
 
     fun brand(context: Context, key: String): ImageBitmap? {
