@@ -19,6 +19,7 @@ Early. Everything below runs on an Android TV emulator; the first run on the TV 
 - Top right: the network state (Wi-Fi bars, Ethernet, or struck through) and a glass settings button, reached with Up from the dock.
 - Brand marks for Plex, PlayStation, Xbox and Wii, drawn like app icons so those tiles look right before the apps are installed (`icon` on an app tile).
 - All apps grid, settings sheet, and a frosted-only glass mode for when the GPU disagrees.
+- Drop to the TV: the launcher listens on port 8765 of the home network. Open `http://<tv-ip>:8765` on a laptop or phone and drag a PDF, an image or a link onto the page, or `curl -T file.pdf http://<tv-ip>:8765/`. PDFs and images open full screen on the TV (Left/Right page through a PDF, Back closes), links open in the TV's browser. The address is shown in Settings. No authentication: it trusts the LAN.
 - Pre-rendered blurs cached on disk, about 30 KB per photo, rendered once in the background.
 
 ## Build and install

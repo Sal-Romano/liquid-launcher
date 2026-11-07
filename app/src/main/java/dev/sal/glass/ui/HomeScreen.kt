@@ -41,7 +41,9 @@ import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
 import dev.sal.glass.config.Tile
 import dev.sal.glass.data.Apps
+import dev.sal.glass.drop.Drop
 import dev.sal.glass.ui.clock.Clock
+import dev.sal.glass.ui.overlay.DropViewer
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
 import dev.sal.glass.ui.dock.FolderRow
@@ -62,7 +64,7 @@ import dev.sal.glass.wallpaper.WallpaperEngine
 import dev.sal.glass.wallpaper.WallpaperLayer
 import kotlinx.coroutines.delay
 
-private enum class Overlay { None, AllApps, Settings, Context, Folder }
+private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop }
 
 /**
  * Photo → clock → dock → overlays. One key router at the root: in the idle state any key only
@@ -112,6 +114,19 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
 
     fun wake() { lastKeyAt = System.currentTimeMillis(); dockVisible = true }
+
+    // Something was dropped on the TV: a link goes to the browser, anything else to the viewer.
+    LaunchedEffect(Drop.serial) {
+        val file = Drop.incoming ?: return@LaunchedEffect
+        wake()
+        if (file.name.lowercase().endsWith(".url")) {
+            val url = runCatching { file.readText().trim() }.getOrNull().orEmpty()
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }.onFailure { toast = "No browser for that link" }
+        } else {
+            overlay = Overlay.Drop
+        }
+    }
 
     fun launch(tile: Tile) {
         when (tile) {
@@ -169,7 +184,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             // All apps is a screen of its own: the clock and the dock leave while it is up, so the
             // grid sits on the photo alone instead of over the home chrome.
-            val chrome = overlay != Overlay.AllApps
+            val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop
             val clockAlpha by animateFloatAsState(if (chrome) 1f else 0f, tween(220), label = "clockAlpha")
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
@@ -216,6 +231,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 onDismiss = { overlay = Overlay.None },
             )
             SettingsSheet(overlay == Overlay.Settings, settingsRows(store, engine), BuildConfig.VERSION_NAME) { overlay = Overlay.None }
+            DropViewer(Drop.incoming, Drop.serial, overlay == Overlay.Drop) { overlay = Overlay.None }
             Toast(toast) { toast = null }
         }
     }
@@ -254,5 +270,6 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
             { store.config.glass.mode.ordinal },
             { i -> store.update { c -> c.copy(glass = c.glass.copy(mode = GlassMode.entries[i])) } }),
         SettingRow("Rescan wallpapers", listOf("Now"), { 0 }, { engine.rescan() }),
+        SettingRow("Drop to the TV", listOf(Drop.address() ?: "no network"), { 0 }, { }),
     )
 }
