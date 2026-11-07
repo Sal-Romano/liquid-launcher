@@ -4,18 +4,15 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,14 +63,15 @@ fun Tile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    glassAlpha: Float = 1f,
+    glassAlpha: () -> Float = { 1f },
     index: Int = 0,
     count: Int = 1,
     trail: FocusTrail? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     var cameFrom by remember { mutableStateOf(0f) }
-    val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "lift")
+    // Read in the draw phase by glass(), never here: the tile does not recompose while it moves.
+    val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "lift")
     val liftPx = with(LocalDensity.current) { 6.dp.toPx() }
     // Positive rotationY recedes the right edge: a tile left of the middle turns toward it.
     val middle = (count - 1) / 2f
@@ -82,9 +80,9 @@ fun Tile(
     LaunchedEffect(focused) {
         if (focused) {
             if (cameFrom != 0f) turn.snapTo(restTilt + cameFrom * NodDegrees)
-            // A slow, slightly underdamped swing (about 0.9 s): long enough to read as a pane
-            // turning even at a low frame rate, and it overshoots once before it settles.
-            turn.animateTo(restTilt, spring(dampingRatio = 0.45f, stiffness = 170f))
+            // A quick, slightly underdamped swing (about half a second) that overshoots once
+            // before it settles. The TV draws it at full rate; the emulator cannot.
+            turn.animateTo(restTilt, spring(dampingRatio = 0.5f, stiffness = 300f))
         } else {
             turn.animateTo(0f, spring(dampingRatio = 1f, stiffness = 420f))
         }
@@ -97,8 +95,8 @@ fun Tile(
             Modifier
                 .size(84.dp)
                 .glass(
-                    TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha,
-                    liftScale = 0.12f, liftPx = liftPx, tiltY = turn.value,
+                    TileShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = glassAlpha,
+                    liftScale = 0.12f, liftPx = liftPx, tiltY = { turn.value },
                 )
                 .onFocusChanged {
                     if (it.isFocused && trail != null) {
@@ -121,15 +119,21 @@ fun Tile(
                 )
             }
         }
-        // The name, under the tile, once the lift and most of the swing have settled.
-        Box(Modifier.width(TileColumnWidth).height(26.dp).padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
-            androidx.compose.animation.AnimatedVisibility(visible = focused, enter = fadeIn(tween(220, delayMillis = 240)), exit = fadeOut(tween(100))) {
+        // The name, under the tile, once the lift and most of the swing have settled. The slot is
+        // wider than the column (centred over it) and the fade is in the text colour, not a layer:
+        // Fire OS clipped a fading layer to the column and cut "Amazon Music" to "mazon Mus".
+        val labelAlpha by animateFloatAsState(
+            if (focused) 1f else 0f,
+            if (focused) tween(180, delayMillis = 120) else tween(90),
+            label = "labelAlpha",
+        )
+        Box(Modifier.requiredWidth(LabelSlotWidth).height(26.dp).padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
+            if (labelAlpha > 0.01f) {
                 Text(
-                    label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-                    modifier = Modifier.wrapContentWidth(Alignment.CenterHorizontally, unbounded = true).widthIn(max = 220.dp),
+                    label, color = Color.White.copy(alpha = labelAlpha), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                     style = TextStyle(
                         fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 15.sp,
-                        shadow = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 1f), blurRadius = 8f),
+                        shadow = Shadow(Color.Black.copy(alpha = 0.6f * labelAlpha), Offset(0f, 1f), blurRadius = 8f),
                     ),
                 )
             }
@@ -139,6 +143,9 @@ fun Tile(
 
 /** Keeps the dock's rhythm: a tile column is always 84 wide and 84 + 26 tall. */
 val TileColumnWidth = 84.dp
+
+/** The label may be this wide, centred under its 84 dp column, without reflowing the row. */
+val LabelSlotWidth = 220.dp
 
 /** The kick when focus lands: degrees about the vertical axis, away from where focus came from. */
 const val NodDegrees = 26f

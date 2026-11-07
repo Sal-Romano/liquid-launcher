@@ -91,5 +91,7 @@ class GlassPanels {
         val overlay = GlassPanels()
         fun of(layer: GlassLayerId) = if (layer == GlassLayerId.Home) home else overlay
         fun tickAll() { home.tick(); overlay.tick() }
+        /** Ask both GL layers to draw a frame, without touching any Compose state. */
+        fun requestRenderAll() { home.onChanged?.invoke(); overlay.onChanged?.invoke() }
     }
 }

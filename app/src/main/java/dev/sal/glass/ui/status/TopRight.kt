@@ -96,20 +96,20 @@ fun TopRight(visible: Boolean, onSettings: () -> Unit, onFocus: (Boolean) -> Uni
     val liftPx = with(LocalDensity.current) { 2.dp.toPx() }
     Row(modifier.graphicsLayer { this.alpha = alpha }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
-            Modifier.height(38.dp).glass(PillShape, GlassVariant.Pill, alpha = alpha).padding(horizontal = 13.dp),
+            Modifier.height(38.dp).glass(PillShape, GlassVariant.Pill, alpha = { alpha }).padding(horizontal = 13.dp),
             contentAlignment = Alignment.Center,
         ) { NetworkGlyph(net, Modifier.size(24.dp)) }
         var focused by remember { mutableStateOf(false) }
-        val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gearLift")
+        val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gearLift")
         Box(
             Modifier
                 .size(42.dp)
-                .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = alpha, liftScale = 0.12f, liftPx = liftPx)
+                .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = { alpha }, liftScale = 0.12f, liftPx = liftPx)
                 .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
                 .focusable()
                 .tileClicks(onSettings, {}),
             contentAlignment = Alignment.Center,
-        ) { GearGlyph(Modifier.size(24.dp), spin = lift) }
+        ) { GearGlyph(Modifier.size(24.dp), spin = lift.value) }
     }
 }
 

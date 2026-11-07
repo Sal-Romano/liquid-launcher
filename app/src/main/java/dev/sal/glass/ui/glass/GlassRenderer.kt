@@ -72,7 +72,8 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
             if (statStart == 0L) statStart = now
             if (now - statStart >= 1000) {
                 val panels = registry.snapshot().count { it.alpha > 0.005f }
-                Log.d("Glass", "glass frames: $statFrames in ${now - statStart} ms, avg ${statNanos / statFrames / 1000} us, worst ${statWorst / 1000} us, $panels panels")
+                // Info level: Fire OS drops debug-level lines from third-party apps.
+                Log.i("Glass", "glass frames: $statFrames in ${now - statStart} ms, avg ${statNanos / statFrames / 1000} us, worst ${statWorst / 1000} us, $panels panels")
                 statStart = now; statFrames = 0; statNanos = 0L; statWorst = 0L
             }
         }

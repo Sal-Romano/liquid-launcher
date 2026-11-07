@@ -90,11 +90,11 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
         pendingDockFocus = null
     }
     val apps = remember(config) { Apps.launchable(context).filter { it.packageName !in config.hidden } }
-    // While an overlay or the dock animates, nudge the GL layer every frame so its panels track.
-    var glassTick by remember { mutableLongStateOf(0L) }
+    // While an overlay or the dock animates, nudge the GL layers every frame so their panels
+    // track, without going through Compose state (a state tick recomposed the whole screen).
     LaunchedEffect(overlay, dockVisible) {
         val until = System.currentTimeMillis() + 700
-        while (System.currentTimeMillis() < until) { GlassPanels.tickAll(); glassTick++; delay(16) }
+        while (System.currentTimeMillis() < until) { GlassPanels.tickAll(); GlassPanels.requestRenderAll(); delay(16) }
     }
     // Every composed frame re-reports its panels; this advances the generation each frame so a
     // panel whose composable left (overlay closed, row recycled) is pruned within ~3 frames.
@@ -103,7 +103,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
 
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }
-    LaunchedEffect(wakeSignal) { engine.rescan(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
+    LaunchedEffect(wakeSignal) { engine.rescan(); AppIcons.forgetInstalled(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
     // Idle timer: the dock fades after idleHideSec without a key press, overlays excepted.
     LaunchedEffect(lastKeyAt, overlay, config.dock.idleHideSec) {
         if (config.dock.idleHideSec <= 0 || overlay != Overlay.None) return@LaunchedEffect
@@ -166,7 +166,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             WallpaperLayer(engine, config.wallpaper.kenBurns)
             val dark = engine.current?.let { dockLuma(it.thumb) } ?: 0f
             val refraction = config.glass.mode == GlassMode.Refraction
-            GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, glassTick, refraction)
+            GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             // All apps is a screen of its own: the clock and the dock leave while it is up, so the
             // grid sits on the photo alone instead of over the home chrome.
             val chrome = overlay != Overlay.AllApps
@@ -203,7 +203,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 )
             }
             // Overlay glass paints above the clock and dock.
-            GlassLayer(GlassLayerId.Overlay, engine.current, engine.next, engine.fade, engine.zoom, dark, glassTick, refraction)
+            GlassLayer(GlassLayerId.Overlay, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             AllApps(overlay == Overlay.AllApps, apps, onLaunch = { app ->
                 runCatching { context.startActivity(app.launchIntent) }; overlay = Overlay.None
             }, onDismiss = { overlay = Overlay.None })

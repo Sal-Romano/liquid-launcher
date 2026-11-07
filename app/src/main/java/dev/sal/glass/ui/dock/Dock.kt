@@ -76,7 +76,7 @@ fun Dock(
                     onClick = { onLaunch(tile) },
                     onLongClick = { onContextMenu(tile) },
                     modifier = Modifier.focusRequester(tileFocus.getOrPut(tile.id) { FocusRequester() }),
-                    glassAlpha = alpha,
+                    glassAlpha = { alpha },
                     index = index,
                     count = tiles.size,
                     trail = trail,

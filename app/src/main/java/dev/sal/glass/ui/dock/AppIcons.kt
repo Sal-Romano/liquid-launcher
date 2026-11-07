@@ -53,8 +53,17 @@ object AppIcons {
         return rasterise(drawable).also { cache.put(packageName, it) }
     }
 
-    fun isInstalled(context: Context, packageName: String): Boolean =
-        try { context.packageManager.getPackageInfo(packageName, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
+    private val installed = HashMap<String, Boolean>()
+
+    /** Cached: a package-manager round trip per tile per recomposition is real time on the TV. */
+    fun isInstalled(context: Context, packageName: String): Boolean = synchronized(installed) {
+        installed.getOrPut(packageName) {
+            try { context.packageManager.getPackageInfo(packageName, 0); true } catch (e: PackageManager.NameNotFoundException) { false }
+        }
+    }
+
+    /** Called when the launcher comes back to the front: an app may have been installed meanwhile. */
+    fun forgetInstalled() = synchronized(installed) { installed.clear() }
 
     /** First letter on a soft dark disc, for apps with no usable icon and for placeholders. */
     fun monogram(context: Context, letter: Char): ImageBitmap {

@@ -93,7 +93,7 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                 ) {
                     items(apps, key = { it.packageName }) { app ->
                         var focused by remember { mutableStateOf(false) }
-                        val lift by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gridLift")
+                        val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gridLift")
                         Column(
                             Modifier.width(84.dp).then(if (app == apps.first()) Modifier.focusRequester(first) else Modifier),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -102,7 +102,7 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                             Box(
                                 Modifier
                                     .size(84.dp)
-                                    .glass(TileShape, GlassVariant.Tile, focused = focused, lift = lift, alpha = glassAlpha, layer = GlassLayerId.Overlay, liftScale = 0.08f)
+                                    .glass(TileShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = { glassAlpha }, layer = GlassLayerId.Overlay, liftScale = 0.08f)
                                     .onFocusChanged { focused = it.isFocused }
                                     .focusable()
                                     .tileClicks({ onLaunch(app) }, {}),

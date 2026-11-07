@@ -14,7 +14,8 @@ import dev.sal.glass.wallpaper.Frame
  * One GL glass pass. The Home layer sits between the wallpaper and the chrome; the Overlay layer
  * sits above the clock and dock so sheets and popovers occlude them. [current]/[next] are the
  * engine's frames, [mix] the crossfade, [zoom] the Ken Burns scale; [dark] flips the tint for
- * bright photos; [tick] is bumped by the host while something over the glass animates.
+ * bright photos. Extra frames while something over the glass animates are requested through
+ * [GlassPanels.requestRenderAll], not through Compose state.
  */
 @Composable
 fun GlassLayer(
@@ -24,7 +25,6 @@ fun GlassLayer(
     mix: Float,
     zoom: Float,
     dark: Float,
-    tick: Long,
     refraction: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -37,7 +37,6 @@ fun GlassLayer(
     LaunchedEffect(zoom) { view.setZoom(zoom) }
     LaunchedEffect(dark) { view.setDark(dark) }
     LaunchedEffect(refraction) { view.setRefraction(refraction) }
-    LaunchedEffect(tick) { view.requestRender() }
     DisposableEffect(registry) {
         registry.onChanged = { view.requestRender() }
         onDispose { registry.onChanged = null }
