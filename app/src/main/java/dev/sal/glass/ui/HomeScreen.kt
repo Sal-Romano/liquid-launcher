@@ -162,6 +162,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 Action.Settings -> overlay = Overlay.Settings
                 Action.NextWallpaper -> engine.skip()
                 Action.PauseSlideshow -> { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed" }
+                Action.None -> Unit
             }
             is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
             else -> toast = "Coming soon"

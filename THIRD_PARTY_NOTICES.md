@@ -64,5 +64,7 @@ The Inter typeface (res/font) is used under the SIL Open Font License 1.1; see I
 
 The Plex, Spotify, PlayStation and Wii glyphs in `res/drawable/brand_*.xml` come from
 [simple-icons](https://github.com/simple-icons/simple-icons) (CC0 1.0). The Xbox glyph comes from
-[Font Awesome Free](https://fontawesome.com/license/free) (icons: CC BY 4.0). The marks themselves
+[Font Awesome Free](https://fontawesome.com/license/free) (icons: CC BY 4.0). The YouTube play
+triangle is drawn here. The Claude icon (`res/drawable-nodpi/brand_claude.png`) is the Claude app icon
+from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Claude-ai-icon.svg). The marks themselves
 are trademarks of their owners and are used only to identify the corresponding apps on this launcher.

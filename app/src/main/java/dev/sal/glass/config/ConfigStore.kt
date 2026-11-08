@@ -36,9 +36,9 @@ class ConfigStore(private val context: Context) {
         for (p in PREFERRED) {
             val app = installed[p.pkg]
             tiles += when {
-                app != null -> AppTile(p.pkg, "${app.packageName}/${app.activityName}", p.label)
+                app != null -> AppTile(p.pkg, "${app.packageName}/${app.activityName}", p.label, icon = p.icon)
                 // Not installed yet but wanted anyway: dimmed with an install hint, like Plex.
-                p.component != null -> AppTile(p.pkg, p.component, p.label, requirePackage = false)
+                p.component != null -> AppTile(p.pkg, p.component, p.label, requirePackage = false, icon = p.icon)
                 else -> continue
             }
         }
@@ -49,12 +49,15 @@ class ConfigStore(private val context: Context) {
                 tiles += AppTile(app.packageName, "${app.packageName}/${app.activityName}", app.label)
             }
         }
+        // A logo that does nothing: OK only taps.
+        tiles += ActionTile("claude", Action.None, "Claude", icon = "claude")
         // Games: a folder that opens as its own row. Wii through Dolphin, PS5 through PS Remote
-        // Play, Xbox through the Xbox app; all drawn with their marks even before they are installed.
+        // Play, Xbox through the Xbox app, Luna; all drawn with their marks even before they are installed.
         tiles += FolderTile("games", "Games", listOf(
             AppTile("wii", "org.dolphinemu.dolphinemu/org.dolphinemu.dolphinemu.ui.main.TvMainActivity", "Wii", requirePackage = false, icon = "wii"),
             AppTile("ps5", "com.playstation.remoteplay/com.playstation.remoteplay.MainActivity", "PS5", requirePackage = false, icon = "playstation"),
             AppTile("xbox", "com.microsoft.xboxone.smartglass/com.microsoft.xboxone.smartglass.MainActivity", "Xbox", requirePackage = false, icon = "xbox"),
+            AppTile("luna", "com.amazon.spiderpork/com.amazon.spiderpork.activities.MainActivity", "Luna"),
         ))
         tiles += ActionTile("all-apps", Action.AllApps, "All apps")
         return LauncherConfig(rows = listOf(TileRow("dock", tiles = tiles)), hidden = Apps.HIDDEN_PACKAGES)
@@ -99,14 +102,13 @@ class ConfigStore(private val context: Context) {
     }
 
     companion object {
-        /** Dock order after Plex. A [component] keeps the tile even when the app is missing. */
-        private class Preferred(val pkg: String, val label: String, val component: String? = null)
+        /** Dock order after Plex. A [component] keeps the tile even when the app is missing; an [icon] is a brand mark drawn instead of the app's own. */
+        private class Preferred(val pkg: String, val label: String, val component: String? = null, val icon: String? = null)
 
         private val PREFERRED = listOf(
-            Preferred("com.amazon.firetv.youtube", "YouTube"),
-            Preferred("com.spotify.tv.android", "Spotify", component = "com.spotify.tv.android/com.spotify.tv.android.SpotifyTVActivity"),
-            Preferred("com.amazon.spiderpork", "Luna"),
-            Preferred("com.amazon.bueller.music", "Amazon Music"),
+            Preferred("com.amazon.firetv.youtube", "YouTube", icon = "youtube"),
+            Preferred("com.spotify.tv.android", "Spotify", component = "com.spotify.tv.android/com.spotify.tv.android.SpotifyTVActivity", icon = "spotify"),
+            Preferred("com.apple.atve.amazon.appletv", "Apple TV"),
         )
     }
 }

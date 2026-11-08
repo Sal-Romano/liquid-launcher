@@ -22,7 +22,7 @@ data class AppTile(
     override val label: String? = null,
     /** Hide the tile when this package is missing; false shows it dimmed with an install hint. */
     val requirePackage: Boolean = true,
-    /** A bundled brand mark to draw instead of the app's icon: "plex", "playstation", "xbox", "wii", "spotify". */
+    /** A bundled brand mark to draw instead of the app's icon: "plex", "playstation", "xbox", "wii", "spotify", "youtube", "claude". */
     val icon: String? = null,
 ) : Tile {
     val packageName: String get() = component.substringBefore('/')
@@ -39,12 +39,19 @@ data class IntentTile(
 ) : Tile
 
 @Serializable
-enum class Action { AllApps, Settings, NextWallpaper, PauseSlideshow }
+/** None: a tile that is only a picture (a logo in the dock); OK does nothing but tap. */
+enum class Action { AllApps, Settings, NextWallpaper, PauseSlideshow, None }
 
 /** A launcher action rather than an app. */
 @Serializable
 @SerialName("action")
-data class ActionTile(override val id: String, val action: Action, override val label: String? = null) : Tile
+data class ActionTile(
+    override val id: String,
+    val action: Action,
+    override val label: String? = null,
+    /** A bundled brand mark to draw instead of the action's glyph. */
+    val icon: String? = null,
+) : Tile
 
 /** v2: a Home Assistant entity. Parsed and shown as a placeholder today. */
 @Serializable

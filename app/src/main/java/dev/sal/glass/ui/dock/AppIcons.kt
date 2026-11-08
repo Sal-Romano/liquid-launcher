@@ -39,7 +39,7 @@ object AppIcons {
             ?: (if (isInstalled(context, tile.packageName)) forPackage(context, tile.packageName) else null)
             ?: BRAND_BY_PACKAGE[tile.packageName]?.let { brand(context, it) }
             ?: monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
-        is ActionTile -> glyph(context, tile.action)
+        is ActionTile -> tile.icon?.let { brand(context, it) } ?: glyph(context, tile.action)
         is FolderTile -> tile.icon?.let { brand(context, it) ?: forPackage(context, it) }
             ?: folder(context, tile.id, tile.children.map { tileIcon(context, it) })
         else -> monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
@@ -95,7 +95,8 @@ object AppIcons {
         return bmp.asImageBitmap().also { cache.put(key, it) }
     }
 
-    private class Brand(val res: Int, val plate: Int, val glyph: Int, val inset: Float = 0.22f)
+    /** [art]: a finished icon (a bitmap), drawn as it is with no plate and no tint. */
+    private class Brand(val res: Int, val plate: Int = 0, val glyph: Int = Color.WHITE, val inset: Float = 0.22f, val art: Boolean = false)
 
     /** Bundled marks on their brand colour, drawn like app icons so they sit with the real ones. */
     private val BRANDS = mapOf(
@@ -104,6 +105,8 @@ object AppIcons {
         "xbox" to Brand(R.drawable.brand_xbox, plate = 0xFF107C10.toInt(), glyph = Color.WHITE, inset = 0.2f),
         "wii" to Brand(R.drawable.brand_wii, plate = 0xFFF3F3F3.toInt(), glyph = 0xFF737373.toInt(), inset = 0.18f),
         "spotify" to Brand(R.drawable.brand_spotify, plate = 0xFF1DB954.toInt(), glyph = Color.WHITE, inset = 0.1f),
+        "youtube" to Brand(R.drawable.brand_youtube, plate = 0xFFFF0000.toInt(), glyph = Color.WHITE, inset = 0.33f),
+        "claude" to Brand(R.drawable.brand_claude, art = true),
     )
 
     /** Apps whose icon we can draw before they are installed. */
@@ -113,6 +116,8 @@ object AppIcons {
         "com.playstation.remoteplay" to "playstation",
         "com.microsoft.xboxone.smartglass" to "xbox",
         "com.spotify.tv.android" to "spotify",
+        "com.spotify.tv.android.second" to "spotify",
+        "com.amazon.firetv.youtube" to "youtube",
     )
 
     fun brand(context: Context, key: String): ImageBitmap? {
@@ -121,9 +126,13 @@ object AppIcons {
         cache.get(cacheKey)?.let { return it }
         val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
+        val d = context.getDrawable(b.res) ?: return null
+        if (b.art) {
+            d.setBounds(0, 0, SIZE, SIZE); d.draw(c)
+            return bmp.asImageBitmap().also { cache.put(cacheKey, it) }
+        }
         val r = SIZE * 0.22f
         c.drawRoundRect(0f, 0f, SIZE.toFloat(), SIZE.toFloat(), r, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = b.plate })
-        val d = context.getDrawable(b.res) ?: return null
         d.setTint(b.glyph)
         val inset = (SIZE * b.inset).toInt()
         d.setBounds(inset, inset, SIZE - inset, SIZE - inset)
@@ -189,6 +198,7 @@ fun AppIcons.glyph(context: Context, action: dev.sal.glass.config.Action): Image
             c.drawRoundRect(size * 0.3f, size * 0.26f, size * 0.3f + w, size * 0.74f, w / 3, w / 3, paint)
             c.drawRoundRect(size * 0.56f, size * 0.26f, size * 0.56f + w, size * 0.74f, w / 3, w / 3, paint)
         }
+        dev.sal.glass.config.Action.None -> Unit // a picture tile without a picture: blank
     }
     return bmp.asImageBitmap().also { AppIconsCache.put(key, it) }
 }
