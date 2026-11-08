@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import dev.sal.glass.ui.Sounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -105,7 +106,7 @@ fun TopRight(visible: Boolean, onSettings: () -> Unit, onFocus: (Boolean) -> Uni
             Modifier
                 .size(42.dp)
                 .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = { alpha }, liftScale = 0.12f, liftPx = liftPx)
-                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused); if (it.isFocused) Sounds.tick() }
                 .focusable()
                 .tileClicks(onSettings, {}),
             contentAlignment = Alignment.Center,

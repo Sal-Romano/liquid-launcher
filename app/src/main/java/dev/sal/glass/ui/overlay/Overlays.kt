@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import dev.sal.glass.data.AppEntry
+import dev.sal.glass.ui.Sounds
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.tileClicks
 import dev.sal.glass.ui.glass.GlassLayerId
@@ -105,7 +106,7 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                                 Modifier
                                     .size(84.dp)
                                     .glass(TileShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = { glassAlpha }, layer = GlassLayerId.Overlay, liftScale = 0.08f)
-                                    .onFocusChanged { focused = it.isFocused }
+                                    .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
                                     .focusable()
                                     .tileClicks({ onLaunch(app) }, {}),
                                 contentAlignment = Alignment.Center,
@@ -160,9 +161,9 @@ private fun MenuRow(name: String, modifier: Modifier = Modifier, onClick: () -> 
         modifier
             .fillMaxWidth().height(40.dp)
             .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
             .focusable()
-            .tileClicks(onClick, {})
+            .tileClicks({ Sounds.tap(); onClick() }, {})
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.CenterStart,
     ) { Text(name, color = Color.White, style = Label) }
@@ -193,13 +194,13 @@ fun SettingsSheet(visible: Boolean, rows: List<SettingRow>, version: String, onD
                             .fillMaxWidth().height(48.dp)
                             .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
                             .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
-                            .onFocusChanged { focused = it.isFocused }
+                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
                             .focusable()
                             .onKeyEvent { e ->
                                 if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                                 when (e.key) {
-                                    Key.DirectionLeft -> { row.set((row.index() - 1 + row.values.size) % row.values.size); true }
-                                    Key.DirectionRight, Key.DirectionCenter, Key.Enter -> { row.set((row.index() + 1) % row.values.size); true }
+                                    Key.DirectionLeft -> { row.set((row.index() - 1 + row.values.size) % row.values.size); Sounds.tick(); true }
+                                    Key.DirectionRight, Key.DirectionCenter, Key.Enter -> { row.set((row.index() + 1) % row.values.size); Sounds.tick(); true }
                                     else -> false
                                 }
                             }

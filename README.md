@@ -16,7 +16,8 @@ Early. Everything below runs on an Android TV emulator; the first run on the TV 
 - Clock block centred at 43 % of the height, updates on the minute, 12/24 h, three sizes.
 - A dock of up to eight tiles driven by `launcher.json` (apps, intents, actions, folders, with Home Assistant entities reserved). Hold OK on a tile to move or hide it. A focused tile lifts, pivots and shows its name underneath.
 - Folders: a tile that holds other tiles (the default config ships a Games folder for Wii, PS5 and Xbox). It shows its children small, two by two, or one icon of its own (`icon`: a brand key or a package name) when it is really one app in several guises, and opens as its own row in the dock's place; Back returns to it.
-- Rename an app in the All apps grid with `labels` in `launcher.json` (package to display name), for apps whose own label is wrong or ambiguous.
+- Rename an app in the All apps grid with `labels` in `launcher.json` (package to display name), for apps whose own label is wrong or ambiguous; it keeps the place its own name sorted it to.
+- Its own navigation sounds: a glass-bead tick when focus moves and a lower tap on OK, in place of the stock Fire OS click (Settings: Sounds Glass / System / Off). Synthesised, in `res/raw`.
 - Top right: the network state (Wi-Fi bars, Ethernet, or struck through) and a glass settings button, reached with Up from the dock.
 - Brand marks for Plex, Spotify, PlayStation, Xbox and Wii, drawn like app icons so those tiles look right before the apps are installed (`icon` on an app tile).
 - All apps grid, settings sheet, and a frosted-only glass mode for when the GPU disagrees.

@@ -108,6 +108,13 @@ data class DockConfig(
     val idleHideSec: Int = 10,
 )
 
+/** Glass: the launcher's own tick and tap. System: the stock Fire OS click. Off: nothing. */
+@Serializable
+enum class SoundMode { Glass, System, Off }
+
+@Serializable
+data class SoundConfig(val mode: SoundMode = SoundMode.Glass)
+
 @Serializable
 data class LauncherConfig(
     val schemaVersion: Int = 1,
@@ -117,7 +124,8 @@ data class LauncherConfig(
     val clock: ClockConfig = ClockConfig(),
     val dock: DockConfig = DockConfig(),
     val glass: GlassConfig = GlassConfig(),
-    /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. */
+    val sound: SoundConfig = SoundConfig(),
+    /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. A renamed app keeps the place its own name sorted it to. */
     val labels: Map<String, String> = emptyMap(),
 ) {
     val dockTiles: List<Tile> get() = rows.firstOrNull()?.tiles ?: emptyList()

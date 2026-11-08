@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import dev.sal.glass.ui.Sounds
 import dev.sal.glass.ui.glass.GlassVariant
 import dev.sal.glass.ui.glass.TileShape
 import dev.sal.glass.ui.glass.glass
@@ -99,6 +100,7 @@ fun Tile(
                     liftScale = 0.12f, liftPx = liftPx, tiltY = { turn.value },
                 )
                 .onFocusChanged {
+                    if (it.isFocused) Sounds.tick()
                     if (it.isFocused && trail != null) {
                         cameFrom = if (trail.last < 0 || trail.last == index) 0f else if (index > trail.last) 1f else -1f
                         trail.last = index

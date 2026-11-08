@@ -28,6 +28,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import dev.sal.glass.BuildConfig
 import dev.sal.glass.config.Action
@@ -39,6 +40,7 @@ import dev.sal.glass.config.FolderTile
 import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
+import dev.sal.glass.config.SoundMode
 import dev.sal.glass.config.Tile
 import dev.sal.glass.data.Apps
 import dev.sal.glass.drop.Drop
@@ -94,8 +96,17 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     val apps = remember(config) {
         Apps.launchable(context)
             .filter { it.packageName !in config.hidden }
+            // Renamed apps keep their place: the two Spotifys stay together as "Kyle" and "Sal".
             .map { app -> config.labels[app.packageName]?.let { app.copy(label = it) } ?: app }
-            .sortedBy { it.label.lowercase() }
+    }
+    val view = LocalView.current
+    LaunchedEffect(Unit) { Sounds.init(context) }
+    LaunchedEffect(config.sound.mode) {
+        Sounds.mode = config.sound.mode
+        // The stock click comes through the view's sound effects; ours replace it or nothing does.
+        val stock = config.sound.mode == SoundMode.System
+        view.isSoundEffectsEnabled = stock
+        view.rootView.isSoundEffectsEnabled = stock
     }
     // While an overlay or the dock animates, nudge the GL layers every frame so their panels
     // track, without going through Compose state (a state tick recomposed the whole screen).
@@ -134,6 +145,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
 
     fun launch(tile: Tile) {
+        Sounds.tap()
         when (tile) {
             is AppTile -> {
                 if (!AppIcons.isInstalled(context, tile.packageName)) { toast = "Install ${tile.label ?: tile.packageName} from the Amazon Appstore"; return }
@@ -169,6 +181,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 .onSizeChanged { ScreenSize.width = it.width.toFloat(); ScreenSize.height = it.height.toFloat() }
                 .onPreviewKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    Sounds.keyAt = android.os.SystemClock.uptimeMillis()
                     val wasIdle = !dockVisible
                     wake()
                     if (overlay != Overlay.None) return@onPreviewKeyEvent false
@@ -225,7 +238,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             // Overlay glass paints above the clock and dock.
             GlassLayer(GlassLayerId.Overlay, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             AllApps(overlay == Overlay.AllApps, apps, onLaunch = { app ->
-                runCatching { context.startActivity(app.launchIntent) }; overlay = Overlay.None
+                Sounds.tap(); runCatching { context.startActivity(app.launchIntent) }; overlay = Overlay.None
             }, onDismiss = { overlay = Overlay.None })
             ContextMenu(
                 overlay == Overlay.Context, contextTile?.label ?: "",
@@ -274,6 +287,9 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
         SettingRow("Glass", listOf("Refraction", "Frosted only"),
             { store.config.glass.mode.ordinal },
             { i -> store.update { c -> c.copy(glass = c.glass.copy(mode = GlassMode.entries[i])) } }),
+        SettingRow("Sounds", listOf("Glass", "System", "Off"),
+            { store.config.sound.mode.ordinal },
+            { i -> store.update { c -> c.copy(sound = c.sound.copy(mode = SoundMode.entries[i])) } }),
         SettingRow("Rescan wallpapers", listOf("Now"), { 0 }, { engine.rescan() }),
         SettingRow("Drop to the TV", listOf(Drop.address() ?: "no network"), { 0 }, { }),
     )
