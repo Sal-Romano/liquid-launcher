@@ -103,7 +103,7 @@ class ConfigStore(private val context: Context) {
         private class Preferred(val pkg: String, val label: String, val component: String? = null)
 
         private val PREFERRED = listOf(
-            Preferred("com.netflix.ninja", "Netflix"),
+            Preferred("com.amazon.firetv.youtube", "YouTube"),
             Preferred("com.spotify.tv.android", "Spotify", component = "com.spotify.tv.android/com.spotify.tv.android.SpotifyTVActivity"),
             Preferred("com.amazon.spiderpork", "Luna"),
             Preferred("com.amazon.bueller.music", "Amazon Music"),
