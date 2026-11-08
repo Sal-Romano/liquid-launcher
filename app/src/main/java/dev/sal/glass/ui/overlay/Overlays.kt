@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -50,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -113,7 +115,13 @@ fun AllApps(visible: Boolean, apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit
                                 Image(icon, app.label, Modifier.size(56.dp))
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text(app.label, color = Color.White.copy(alpha = if (focused) 1f else 0.8f), style = Label, maxLines = 1, textAlign = TextAlign.Center)
+                            // The cell is as wide as the tile, so a label may run into the gutters and onto a
+                            // second line ("Amazon Music", "Spotify (Kyle)") instead of losing every word but its first.
+                            Text(
+                                app.label, Modifier.requiredWidth(96.dp),
+                                color = Color.White.copy(alpha = if (focused) 1f else 0.8f), style = Label,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                            )
                         }
                     }
                 }

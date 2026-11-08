@@ -40,7 +40,8 @@ object AppIcons {
             ?: BRAND_BY_PACKAGE[tile.packageName]?.let { brand(context, it) }
             ?: monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
         is ActionTile -> glyph(context, tile.action)
-        is FolderTile -> folder(context, tile.id, tile.children.map { tileIcon(context, it) })
+        is FolderTile -> tile.icon?.let { brand(context, it) ?: forPackage(context, it) }
+            ?: folder(context, tile.id, tile.children.map { tileIcon(context, it) })
         else -> monogram(context, (tile.label ?: tile.id).firstOrNull() ?: '?')
     }
 

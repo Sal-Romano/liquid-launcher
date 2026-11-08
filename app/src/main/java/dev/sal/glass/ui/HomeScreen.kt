@@ -91,7 +91,12 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
         runCatching { tileFocus[id]?.requestFocus() ?: dockFocus.requestFocus() }
         pendingDockFocus = null
     }
-    val apps = remember(config) { Apps.launchable(context).filter { it.packageName !in config.hidden } }
+    val apps = remember(config) {
+        Apps.launchable(context)
+            .filter { it.packageName !in config.hidden }
+            .map { app -> config.labels[app.packageName]?.let { app.copy(label = it) } ?: app }
+            .sortedBy { it.label.lowercase() }
+    }
     // While an overlay or the dock animates, nudge the GL layers every frame so their panels
     // track, without going through Compose state (a state tick recomposed the whole screen).
     LaunchedEffect(overlay, dockVisible) {

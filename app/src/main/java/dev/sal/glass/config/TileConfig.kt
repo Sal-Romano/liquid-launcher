@@ -63,6 +63,11 @@ data class FolderTile(
     override val id: String,
     override val label: String? = null,
     val children: List<Tile> = emptyList(),
+    /**
+     * Draw this instead of the two-by-two of children: a bundled brand key ("spotify") or a package
+     * name whose installed icon to borrow. For a folder that is really one app in several guises.
+     */
+    val icon: String? = null,
 ) : Tile
 
 @Serializable
@@ -112,6 +117,8 @@ data class LauncherConfig(
     val clock: ClockConfig = ClockConfig(),
     val dock: DockConfig = DockConfig(),
     val glass: GlassConfig = GlassConfig(),
+    /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. */
+    val labels: Map<String, String> = emptyMap(),
 ) {
     val dockTiles: List<Tile> get() = rows.firstOrNull()?.tiles ?: emptyList()
 }
