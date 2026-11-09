@@ -122,6 +122,10 @@ enum class SoundMode { Glass, System, Off }
 @Serializable
 data class SoundConfig(val mode: SoundMode = SoundMode.Glass)
 
+/** How many steps the volume keys move through (the TV has 100). 0 = System: Fire OS keeps its own popup. */
+@Serializable
+data class VolumeConfig(val levels: Int = 20)
+
 @Serializable
 data class LauncherConfig(
     val schemaVersion: Int = 1,
@@ -132,6 +136,7 @@ data class LauncherConfig(
     val dock: DockConfig = DockConfig(),
     val glass: GlassConfig = GlassConfig(),
     val sound: SoundConfig = SoundConfig(),
+    val volume: VolumeConfig = VolumeConfig(),
     /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. A renamed app keeps the place its own name sorted it to. */
     val labels: Map<String, String> = emptyMap(),
 ) {

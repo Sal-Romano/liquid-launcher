@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Glass</string>
+    <string name="volume_service_description">Takes the volume keys so Glass can step the volume in its own levels and show its own volume pill. Reads nothing on screen.</string>
 </resources>

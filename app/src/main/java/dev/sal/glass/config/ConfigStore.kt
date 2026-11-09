@@ -102,6 +102,19 @@ class ConfigStore(private val context: Context) {
     }
 
     companion object {
+        private val peekJson = Json { ignoreUnknownKeys = true }
+        private var peeked: Pair<Long, LauncherConfig>? = null
+
+        /** The saved config as another component sees it (the volume service), re-read when the file changes. */
+        @Synchronized
+        fun peek(context: Context): LauncherConfig? {
+            val f = File(context.filesDir, "launcher.json")
+            if (!f.exists()) return null
+            val stamp = f.lastModified()
+            peeked?.let { if (it.first == stamp) return it.second }
+            return runCatching { peekJson.decodeFromString<LauncherConfig>(f.readText()) }.getOrNull()?.also { peeked = stamp to it }
+        }
+
         /** Dock order after Plex. A [component] keeps the tile even when the app is missing; an [icon] is a brand mark drawn instead of the app's own. */
         private class Preferred(val pkg: String, val label: String, val component: String? = null, val icon: String? = null)
 

@@ -41,6 +41,7 @@ import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
 import dev.sal.glass.config.SoundMode
+import dev.sal.glass.config.VolumeConfig
 import dev.sal.glass.config.Tile
 import dev.sal.glass.data.Apps
 import dev.sal.glass.drop.Drop
@@ -266,6 +267,8 @@ private fun dockLuma(thumb: android.graphics.Bitmap): Float {
     return ((l - 0.45f) / 0.15f).coerceIn(0f, 1f)
 }
 
+private val volumeLevels = listOf(10, 20, 25, 50, 0)
+
 private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {
     val intervals = listOf(30, 60, 120, 300, 900)
     val idle = listOf(5, 10, 20, 0)
@@ -291,6 +294,9 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
         SettingRow("Sounds", listOf("Glass", "System", "Off"),
             { store.config.sound.mode.ordinal },
             { i -> store.update { c -> c.copy(sound = c.sound.copy(mode = SoundMode.entries[i])) } }),
+        SettingRow("Volume levels", listOf("10", "20", "25", "50", "System"),
+            { volumeLevels.indexOf(store.config.volume.levels).coerceAtLeast(0) },
+            { i -> store.update { c -> c.copy(volume = VolumeConfig(levels = volumeLevels[i])) } }),
         SettingRow("Rescan wallpapers", listOf("Now"), { 0 }, { engine.rescan() }),
         SettingRow("Drop to the TV", listOf(Drop.address() ?: "no network"), { 0 }, { }),
     )

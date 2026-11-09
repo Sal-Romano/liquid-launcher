@@ -44,6 +44,19 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The volume keys, system-wide: fewer levels and the launcher's own pill. Enabled over
+             adb (see VolumeService); never on by itself. -->
+        <service
+            android:name=".volume.VolumeService"
+            android:exported="true"
+            android:label="Glass volume"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/volume_service" />
+        </service>
     </application>
 
 </manifest>

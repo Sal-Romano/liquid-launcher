@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lets the launcher draw its volume pill over every app and watch the volume change. Nothing
+     else: no screen content is read. (Key filtering stays declared but Fire OS never hands
+     volume keys to a filter; see VolumeService.) -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/volume_service_description"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRequestFilterKeyEvents="true"
+    android:notificationTimeout="100" />
