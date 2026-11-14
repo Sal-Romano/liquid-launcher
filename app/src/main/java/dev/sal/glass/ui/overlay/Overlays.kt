@@ -217,10 +217,10 @@ fun SettingsSheet(visible: Boolean, rows: List<SettingRow>, version: String, onD
     }
 }
 
-/** Bottom-centre pill that fades after 2.5 s. */
+/** Top-centre pill that fades after 2.5 s, or stays while [sticky]: something still under way. */
 @Composable
-fun Toast(message: String?, onDone: () -> Unit) {
-    LaunchedEffect(message) { if (message != null) { delay(2500); onDone() } }
+fun Toast(message: String?, sticky: Boolean = false, onDone: () -> Unit) {
+    LaunchedEffect(message, sticky) { if (message != null && !sticky) { delay(2500); onDone() } }
     AnimatedVisibility(message != null, enter = fadeIn(tween(160)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Box(

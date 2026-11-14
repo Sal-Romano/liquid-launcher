@@ -90,6 +90,9 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     var openFolder by remember { mutableStateOf<FolderTile?>(null) }
     var topFocused by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // Something still under way (a hook tile waiting for its answer): shown until it is done,
+    // under any passing toast.
+    var pending by remember { mutableStateOf<String?>(null) }
     val dockFocus = remember { FocusRequester() }
     val tileFocus = remember { mutableMapOf<String, FocusRequester>() }
     // A tile to put focus back on once the dock has returned (after a folder closes).
@@ -181,20 +184,14 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             }
             is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
             is HookTile -> {
-                // The other end answers when it is done (Dolphin up, TV switched), so this can take a while.
-                toast = "Starting ${tile.label ?: "that"}…"
+                // The other end answers when it is done (Dolphin up, TV switched), so this can take
+                // a while: say so until then, and ignore a second press meanwhile.
+                if (pending != null) return
+                val name = tile.label ?: "that"
+                pending = "Starting $name…"
                 scope.launch(Dispatchers.IO) {
-                    val result = runCatching {
-                        val c = java.net.URL(tile.url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
-                        try { c.connectTimeout = 3000; c.readTimeout = 30000; c.responseCode } finally { c.disconnect() }
-                    }
-                    withContext(Dispatchers.Main) {
-                        toast = when (val code = result.getOrNull()) {
-                            in 200..299 -> null
-                            null -> "Could not reach ${tile.label ?: tile.url}"
-                            else -> "${tile.label ?: "Hook"} said no ($code)"
-                        }
-                    }
+                    val problem = callHook(tile.url, name)
+                    withContext(Dispatchers.Main) { pending = null; toast = problem }
                 }
             }
             else -> toast = "Coming soon"
@@ -283,7 +280,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             )
             SettingsSheet(overlay == Overlay.Settings, settingsRows(store, engine), BuildConfig.VERSION_NAME) { overlay = Overlay.None }
             DropViewer(Drop.incoming, Drop.serial, overlay == Overlay.Drop) { overlay = Overlay.None }
-            Toast(toast) { toast = null }
+            Toast(toast ?: pending, sticky = toast == null && pending != null) { toast = null }
         }
     }
 }

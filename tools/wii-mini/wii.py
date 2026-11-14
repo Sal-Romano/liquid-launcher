@@ -11,8 +11,12 @@ The Wii behaves like an app on the TV:
   When it has shown something else for a few seconds (Home, another app or input, the TV
   asleep), Dolphin is frozen exactly where it was. When the TV shows this Mac again, however it
   got there, Dolphin thaws.
-- After two hours paused, Dolphin quits. Anything not saved in the game is lost, as when a
+- While someone uses this Mac over Screen Sharing, Dolphin is never left frozen under them:
+  it does not pause, and a paused one thaws.
+- After twelve hours paused, Dolphin quits. Anything not saved in the game is lost, as when a
   real Wii is switched off.
+- /play has a deadline: the Wii up within 15 s and the TV switched by 22 s, or it answers with
+  a short error for the TV and never switches the TV after giving up. The launcher waits 30 s.
 - The Wii Remote bar has power only while Dolphin runs unpaused, so the Wii Remotes switch off
   on every pause (press a button to reconnect) and the bar's glow goes dark. That needs a USB
   hub with per-port power switching between the Mac and the bar; the M2 Mac mini's own ports
@@ -41,7 +45,9 @@ CFG = {
     "poll_s": 2.0,
     "away_s": 4.0,             # the TV shows something else this long: the Wii pauses
     "lost_s": 120.0,           # the TV does not answer this long (switched off): the Wii pauses
-    "quit_after_s": 2 * 3600,  # paused this long: Dolphin quits
+    "quit_after_s": 12 * 3600,  # paused this long: Dolphin quits
+    "up_within_s": 15.0,        # /play: the Wii must be up by then...
+    "switch_by_s": 22.0,        # ...and the TV switched by then, or /play gives up (launcher waits 30)
     "bar": "Mayflash",         # the Wii Remote bar, as uhubctl describes it
 }
 HOME = os.path.expanduser("~")
@@ -87,21 +93,26 @@ def save(s):
 
 # ---- the TV, over its network adb (with a key the TV already trusts)
 
-def adb(*args, timeout=10):
+def adb(*args, timeout=10, until=None):
     """One adb command to the TV. Its Wi-Fi adb goes 'offline' now and then and only a
-    disconnect/connect clears it, so a failure gets one reconnect and one retry."""
-    r = sh(ADB, "-s", CFG["tv"], *args, timeout=timeout)
-    if r.returncode != 0:
-        sh(ADB, "disconnect", CFG["tv"], timeout=5)
-        sh(ADB, "connect", CFG["tv"], timeout=5)
-        r = sh(ADB, "-s", CFG["tv"], *args, timeout=timeout)
+    disconnect/connect clears it, so a failure gets one reconnect and one retry. With [until],
+    no step runs past that time."""
+    def t(cap):
+        return cap if until is None else max(0.5, min(cap, until - time.time()))
+    r = sh(ADB, "-s", CFG["tv"], *args, timeout=t(timeout))
+    if r.returncode != 0 and (until is None or time.time() < until):
+        sh(ADB, "disconnect", CFG["tv"], timeout=t(3))
+        sh(ADB, "connect", CFG["tv"], timeout=t(3))
+        r = sh(ADB, "-s", CFG["tv"], *args, timeout=t(timeout))
     return r
 
 
-def tv_key(code):
+def tv_key(code, until=None):
     for _ in range(3):
-        if adb("shell", "input", "keyevent", str(code)).returncode == 0:
+        if adb("shell", "input", "keyevent", str(code), timeout=4, until=until).returncode == 0:
             return True
+        if until is not None and time.time() + 1.0 >= until:
+            break
         time.sleep(1.0)
     log("tv key", code, "failed")
     return False
@@ -163,6 +174,22 @@ def bar(on):
     s["bar_on"], s["bar_where"] = on, where
     save(s)
     return True
+
+
+# ---- someone at the Mac itself
+
+_shared = {"at": 0.0, "value": False}
+
+
+def screen_shared(max_age=0.0):
+    """Someone is using this Mac over Screen Sharing (or any VNC client): an established TCP
+    connection on port 5900, or one held by screensharingd. Cached for [max_age] seconds."""
+    if time.time() - _shared["at"] > max_age:
+        r = sh("lsof", "-nP", "-iTCP", "-sTCP:ESTABLISHED", timeout=10)
+        _shared["value"] = any(
+            line.startswith("screensha") or ":5900->" in line for line in r.stdout.splitlines()[1:])
+        _shared["at"] = time.time()
+    return _shared["value"]
 
 
 # ---- Dolphin
@@ -256,39 +283,59 @@ def stop(pid):
 # ---- what the Wii tile and the watcher do
 
 def play():
-    with LOCK:
-        t0 = time.time()
-        # Right after a boot the daemon is up before the auto-login has finished.
-        while console_user() in ("", "root") and time.time() - t0 < 40:
-            time.sleep(0.5)
-        wake()
+    t0 = time.time()
+    up_by, switch_by = t0 + CFG["up_within_s"], t0 + CFG["switch_by_s"]
+    if not LOCK.acquire(timeout=CFG["up_within_s"]):
+        return {"ok": False, "error": "the Mac is busy, try again"}
+    try:
+        return _play(t0, up_by, switch_by)
+    finally:
+        LOCK.release()
+
+
+def _play(t0, up_by, switch_by):
+    # Right after a boot the daemon is up before the auto-login has finished.
+    while console_user() in ("", "root"):
+        if time.time() >= up_by:
+            return {"ok": False, "error": "the Mac is still starting up"}
+        time.sleep(0.5)
+    wake()
+    pid = dolphin()
+    if pid and not batch(pid) and not frozen(pid) and not busy(pid):
+        # A Dolphin window left open (macOS reopens apps at login), not a Wii: replace it.
+        stop(pid)
+        pid = None
+    started = pid is None
+    if started:
+        as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
+        while dolphin() is None and time.time() < up_by:
+            time.sleep(0.2)
         pid = dolphin()
-        if pid and not batch(pid) and not frozen(pid) and not busy(pid):
-            # A Dolphin window left open (macOS reopens apps at login), not a Wii: replace it.
-            stop(pid)
-            pid = None
-        started = pid is None
-        if started:
-            as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
-            while dolphin() is None and time.time() - t0 < 60:
-                time.sleep(0.2)
-            pid = dolphin()
-            if pid is None:
-                return {"ok": False, "error": "Dolphin did not start"}
-        elif frozen(pid):
-            resume(pid)
-        else:
-            as_user("open", "-a", CFG["app"])  # to the front
-        bar(True)
-        s = state()
-        s["session"], s["last_mac"] = True, time.time()
-        s.pop("paused_at", None)
-        save(s)
-        if started:
-            time.sleep(2.5)  # switch while the Wii Menu loads, not before Dolphin has a window
-        switched = tv_key(CFG["hdmi_key"])
-        return {"ok": True, "started": started, "switched": switched,
-                "took_ms": int((time.time() - t0) * 1000)}
+        if pid is None:
+            log("play: Dolphin did not start in time")
+            return {"ok": False, "error": "Dolphin didn't start"}
+    elif frozen(pid):
+        resume(pid)
+    else:
+        as_user("open", "-a", CFG["app"])  # to the front
+    bar(True)
+    s = state()
+    s["session"], s["last_mac"] = True, time.time()
+    s.pop("paused_at", None)
+    save(s)
+    if started:
+        time.sleep(max(0.0, min(2.5, up_by - time.time())))  # switch while the Wii Menu loads
+        if dolphin() is None:
+            end_session()
+            log("play: Dolphin closed as it started")
+            return {"ok": False, "error": "Dolphin closed as it started"}
+    if time.time() >= switch_by:  # the launcher may have given up: never switch after that
+        log("play: too slow, not switching the TV")
+        return {"ok": False, "error": "it took too long, try again"}
+    if not tv_key(CFG["hdmi_key"], until=switch_by):
+        return {"ok": False, "error": "couldn't switch the TV"}
+    return {"ok": True, "started": started, "switched": True,
+            "took_ms": int((time.time() - t0) * 1000)}
 
 
 def tick():
@@ -317,11 +364,16 @@ def tick():
         bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
         return
     if frozen(pid):
-        if now - s.get("paused_at", now) >= CFG["quit_after_s"]:
+        if screen_shared(max_age=15):
+            log("thawing: someone is using the Mac over Screen Sharing")
+            resume(pid)
+        elif now - s.get("paused_at", now) >= CFG["quit_after_s"]:
             stop(pid)
         return
     away = now - s.get("last_mac", now)
     if (view == "away" and away >= CFG["away_s"]) or (view is None and away >= CFG["lost_s"]):
+        if screen_shared(max_age=15):
+            return  # someone is using the Mac over Screen Sharing: do not freeze Dolphin under them
         pause(pid)
 
 

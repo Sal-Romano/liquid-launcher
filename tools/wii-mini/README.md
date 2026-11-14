@@ -7,14 +7,20 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   fullscreen, with no Dolphin window (`-b -C Dolphin.Display.Fullscreen=True -n
   0000000100000002`). The display wakes, and the TV switches to the Mac's HDMI input by
   injecting `KEYCODE_TV_INPUT_HDMI_2` (244) over the TV's network adb, while the Wii Menu loads.
-  About 4 s from a cold start, 1-2 s to resume.
+  About 4 s from a cold start, 1-2 s to resume. It has a deadline: the Wii up within 15 s and
+  the TV switched by 22 s, or it answers `{"ok": false, "error": "..."}` and never switches the
+  TV after giving up. The launcher waits 30 s, keeps "Starting Wii…" up until the answer, and
+  shows the error ("Wii: Dolphin didn't start", "Couldn't reach Wii") instead of switching.
 - **Leaving pauses it.** While Dolphin runs, a watcher asks the TV every 2 s what it shows
   (`dumpsys power`, `window` and `tv_input`; HDMI 2 is the session `HdmiInputService/HW3`).
   After 4 s on anything else (Home, another app or input, the TV asleep), or 2 min with the TV
   not answering (switched off), Dolphin is frozen with SIGSTOP. When the TV shows the Mac again,
   by the tile or by the TV's own input menu, it gets SIGCONT. Measured: paused 3-5 s after Home,
   resumed 5 s after switching back by the input menu.
-- **After two hours paused it quits** (SIGCONT, then SIGTERM, which Dolphin honours cleanly;
+- **Not while someone is at the Mac.** While a Screen Sharing (VNC, port 5900) session is
+  connected, Dolphin is never left frozen under them: it does not pause, and a paused one thaws.
+  (2026-11-14: a paused Dolphin looked hung over Screen Sharing and was force-quit twice.)
+- **After twelve hours paused it quits** (SIGCONT, then SIGTERM, which Dolphin honours cleanly;
   SIGKILL after 10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
   If Dolphin closes while the TV shows it (Wii Menu, power off), the TV goes back to the launcher.
 - **The Wii Remote bar** (a Mayflash DolphinBar) gets power only while Dolphin runs unpaused, so
