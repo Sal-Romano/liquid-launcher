@@ -34,6 +34,8 @@ import kotlin.math.ceil
  * And a set is only a nudge: CEC has no "go to 35", so Android taps the soundbar's key once per
  * set and the soundbar moves a step. The service keeps nudging, one tap per report that comes
  * back (or after a pause if none does), until the level lands, with a cap on taps and time.
+ * With a Roku soundbar's address configured the taps go over the network instead, all at once, so
+ * the level jumps rather than ticks; the CEC nudges remain the fallback if the network taps fail.
  *
  * Enabled over adb, next to any other service already listed:
  *   adb shell settings put secure enabled_accessibility_services \
@@ -48,6 +50,9 @@ class VolumeService : AccessibilityService() {
     private var targetAt = 0L
     /** When the last target was reached: a report or two can still trail in after that. */
     private var settledAt = 0L
+    /** The level the last press asked for, and whether we already corrected a miss once. */
+    private var lastGoal = -1
+    private var corrected = false
 
     private val volumeChanged = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -78,24 +83,41 @@ class VolumeService : AccessibilityService() {
             val toward = if (targetUp) now > before else now < before
             if (t - targetAt < SETTLE_MS && (toward || reached)) {
                 hud?.show(pending / step, levels, pending)
-                if (reached) settle(t) else nudge()
+                if (reached) landed(now, t) else nudge()
                 return
             }
             target = -1 // stale or went the other way: this change is a press
         } else if (t - settledAt < TRAIL_MS && kotlin.math.abs(now - before) <= 2) {
-            return // the soundbar's last report trailing in after we settled
+            landed(now, t) // the soundbar's last report trailing in after we settled: a miss to correct, or noise
+            return
         }
         // A press from the remote moved it by one of Fire OS's steps: carry it on to our next level.
         val up = now > before
         val level = (if (up) before / step + 1 else ceil(before / step.toFloat()).toInt() - 1).coerceIn(0, levels)
         val goal = (level * step).coerceIn(0, max)
         hud?.show(level, levels, goal)
+        lastGoal = goal; corrected = false
         if (goal != now) {
             target = goal; targetUp = goal > now; targetAt = t; nudges = 0
-            nudge()
+            val host = ConfigStore.peek(this)?.volume?.soundbar
+            if (host != null) tapSoundbar(host, goal - now) else nudge()
         } else {
             settle(t)
         }
+    }
+
+    /**
+     * The reports have stopped near the goal. With the soundbar on the network, Fire OS's own step
+     * and ours can overlap while CEC catches up, so the level may land a step or two off: tap the
+     * difference once, then leave it, whatever it says.
+     */
+    private fun landed(now: Int, t: Long) {
+        settle(t)
+        val host = ConfigStore.peek(this)?.volume?.soundbar ?: return
+        if (corrected || lastGoal < 0 || now == lastGoal || kotlin.math.abs(now - lastGoal) > 3) return
+        corrected = true
+        target = lastGoal; targetUp = lastGoal > now; targetAt = t
+        tapSoundbar(host, lastGoal - now)
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -118,6 +140,36 @@ class VolumeService : AccessibilityService() {
         runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, goal, 0) }
             .onFailure { Log.w("Glass", "set volume failed", it); settle(SystemClock.uptimeMillis()); return }
         handler.postDelayed(nudgeAgain, NUDGE_WAIT_MS)
+    }
+
+    /**
+     * The rest of the way over the network: one Roku ECP key press per step, 60 ms apart. The TV
+     * learns the result from the soundbar's next CEC report, which the pending target absorbs. If
+     * a press fails, the CEC nudges take over after their pause.
+     */
+    private fun tapSoundbar(host: String, delta: Int) {
+        val key = if (delta > 0) "VolumeUp" else "VolumeDown"
+        handler.postDelayed(nudgeAgain, NUDGE_WAIT_MS * 2)
+        Thread {
+            repeat(kotlin.math.abs(delta)) {
+                val result = runCatching {
+                    val c = java.net.URL("http://$host:8060/keypress/$key").openConnection() as java.net.HttpURLConnection
+                    try {
+                        // The soundbar usually answers in 50 ms but sometimes takes over a second.
+                        c.requestMethod = "POST"; c.connectTimeout = 1000; c.readTimeout = 2500; c.doOutput = true
+                        c.outputStream.close()
+                        c.responseCode
+                    } finally { c.disconnect() }
+                }
+                val code = result.getOrNull()
+                if (code == null || code !in 200..299) {
+                    // Carry on: a slow press may still have landed, and the landing correction and
+                    // the CEC nudges pick up whatever did not.
+                    Log.w("Glass", "soundbar tap failed at $host: ${code ?: result.exceptionOrNull()?.toString()}")
+                }
+                Thread.sleep(60)
+            }
+        }.start()
     }
 
     private fun settle(t: Long) {

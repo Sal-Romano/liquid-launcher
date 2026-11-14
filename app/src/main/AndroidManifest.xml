@@ -21,7 +21,9 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Glass">
+        <!-- usesCleartextTraffic: the Roku soundbar's control port (8060) is plain HTTP on the LAN. -->
 
         <activity
             android:name=".MainActivity"

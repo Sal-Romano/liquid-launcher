@@ -132,7 +132,16 @@ data class AwakeConfig(val minutes: Int = 0)
 
 /** How many steps the volume keys move through (the TV has 100). 0 = System: Fire OS keeps its own popup. */
 @Serializable
-data class VolumeConfig(val levels: Int = 20)
+data class VolumeConfig(
+    val levels: Int = 20,
+    /**
+     * A Roku soundbar's address, when the TV's audio goes to one over eARC. The TV can only tap the
+     * soundbar's volume key once per CEC round trip (about a second each), so a level of five steps
+     * ticked five times; over the network (Roku ECP, port 8060) the taps land in a fraction of a
+     * second and the level jumps once. Null: CEC taps only.
+     */
+    val soundbar: String? = null,
+)
 
 @Serializable
 data class LauncherConfig(
