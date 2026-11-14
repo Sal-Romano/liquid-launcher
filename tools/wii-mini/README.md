@@ -31,6 +31,10 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   works, for example Satechi's Mac Mini Hub (M1/M2): plug it in, plug the bar into it, and the
   daemon finds the bar by name (`uhubctl -s Mayflash`). Until then the bar simply stays on.
 - Dolphin opened on the Mac itself, not through the tile or the TV, is left alone.
+- **No mouse pointer on the TV.** Every open or resume parks the pointer at the middle of the
+  right edge (CGWarpMouseCursorPosition), where no Dock, menu bar or hot corner opens and the
+  arrow is drawn almost off screen; left at the bottom edge it held the Dock open over the game.
+  Dolphin is also started with `CursorVisibility` 0 (Never) for the pointer over the game.
 
 `/home` sends the TV back to the launcher, `/quit` quits Dolphin and goes home, `/status` reports
 (running, paused, session, what the TV shows, the bar). State lives in `state.json` next to

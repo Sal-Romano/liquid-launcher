@@ -40,8 +40,10 @@ CFG = {
     "hdmi_input": "HdmiInputService/HW3",  # HDMI 2, as the TV's dumpsys tv_input names it
     "port": 8766,
     "app": "Dolphin",
-    # No Dolphin UI, fullscreen whatever the GUI says, straight into the Wii System Menu.
-    "boot": ["-b", "-C", "Dolphin.Display.Fullscreen=True", "-n", "0000000100000002"],
+    # No Dolphin UI, fullscreen whatever the GUI says, no mouse pointer over the game
+    # (CursorVisibility 0 = Never), straight into the Wii System Menu.
+    "boot": ["-b", "-C", "Dolphin.Display.Fullscreen=True", "-C", "Dolphin.Interface.CursorVisibility=0",
+             "-n", "0000000100000002"],
     "poll_s": 2.0,
     "away_s": 4.0,             # the TV shows something else this long: the Wii pauses
     "lost_s": 120.0,           # the TV does not answer this long (switched off): the Wii pauses
@@ -225,6 +227,26 @@ def wake():
     subprocess.Popen(["launchctl", "asuser", UID, "sudo", "-u", USER, "caffeinate", "-u", "-t", "8"])
 
 
+PARK = '''
+import ctypes, ctypes.util
+class P(ctypes.Structure): _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+class R(ctypes.Structure): _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double), ("w", ctypes.c_double), ("h", ctypes.c_double)]
+cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+cg.CGMainDisplayID.restype = ctypes.c_uint32
+cg.CGDisplayBounds.restype, cg.CGDisplayBounds.argtypes = R, [ctypes.c_uint32]
+cg.CGWarpMouseCursorPosition.argtypes = [P]
+b = cg.CGDisplayBounds(cg.CGMainDisplayID())
+cg.CGWarpMouseCursorPosition(P(b.x + b.w - 1, b.y + b.h / 2))
+'''
+
+
+def park_cursor():
+    """Nobody uses a mouse with the Wii: put the pointer at the middle of the right edge, where no
+    Dock, menu bar or hot corner opens and the arrow is drawn almost entirely off screen. Left at
+    the bottom edge it held the Dock open over the game (2026-11-14)."""
+    as_user("/usr/bin/python3", "-c", PARK)
+
+
 def console_user():
     r = sh("stat", "-f", "%Su", "/dev/console")
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -318,6 +340,7 @@ def _play(t0, up_by, switch_by):
         resume(pid)
     else:
         as_user("open", "-a", CFG["app"])  # to the front
+    park_cursor()
     bar(True)
     s = state()
     s["session"], s["last_mac"] = True, time.time()
@@ -359,6 +382,7 @@ def tick():
         if frozen(pid):
             wake()
             resume(pid)
+            park_cursor()
         return
     if not s.get("session"):
         bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
