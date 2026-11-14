@@ -275,7 +275,7 @@ private fun dockLuma(thumb: android.graphics.Bitmap): Float {
     return ((l - 0.45f) / 0.15f).coerceIn(0f, 1f)
 }
 
-private val volumeLevels = listOf(10, 20, 25, 50, 0)
+private val volumeLevels = listOf(0, 10, 20, 25, 50)
 private val awakeMinutes = listOf(0, 60, 180, 360, -1)
 
 private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {
@@ -306,9 +306,12 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
         SettingRow("Stay awake", listOf("Always", "1 h", "3 h", "6 h", "Fire TV decides"),
             { awakeMinutes.indexOf(store.config.awake.minutes).coerceAtLeast(0) },
             { i -> store.update { c -> c.copy(awake = AwakeConfig(minutes = awakeMinutes[i])) } }),
-        SettingRow("Volume levels", listOf("10", "20", "25", "50", "System"),
+        SettingRow("Volume pill", listOf("Glass", "Fire TV"),
+            { if (store.config.volume.pill) 0 else 1 },
+            { i -> store.update { c -> c.copy(volume = c.volume.copy(pill = i == 0)) } }),
+        SettingRow("Volume levels", listOf("Fire TV", "10", "20", "25", "50"),
             { volumeLevels.indexOf(store.config.volume.levels).coerceAtLeast(0) },
-            { i -> store.update { c -> c.copy(volume = VolumeConfig(levels = volumeLevels[i])) } }),
+            { i -> store.update { c -> c.copy(volume = c.volume.copy(levels = volumeLevels[i])) } }),
         SettingRow("Rescan wallpapers", listOf("Now"), { 0 }, { engine.rescan() }),
         SettingRow("Drop to the TV", listOf(Drop.address() ?: "no network"), { 0 }, { }),
     )

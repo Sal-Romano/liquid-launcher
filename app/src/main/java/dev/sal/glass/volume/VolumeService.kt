@@ -15,27 +15,18 @@ import dev.sal.glass.config.ConfigStore
 import kotlin.math.ceil
 
 /**
- * The volume, in the launcher's own levels and with its own pill.
+ * The volume pill, and optionally the launcher's own volume levels.
  *
  * Fire OS handles the remote's volume keys below every app and every accessibility key filter (the
  * filter sees D-pad keys but never Volume Up/Down; checked on the Hisense, 2026-11-08), so the keys
- * cannot be taken. What can be done: watch the volume change, snap it on to the next of our levels
- * in the direction it moved, and draw our pill over the stock popup, which is an opaque box at the
- * top centre that an accessibility overlay sits above. A press moves one level; holding ramps.
- * With levels set to System nothing happens. Mute is never touched.
+ * cannot be taken. What can be done: the service is told the instant Fire OS's own volume box
+ * appears and hears every volume change, so it draws [VolumeHud] over that box with the real level,
+ * and the stock box is never seen. That is the default (Settings: Volume pill).
  *
- * The soundbar is on the other end of CEC system-audio mode, so a set does not land at once:
- * Android walks the soundbar to the index one CEC key at a time and the soundbar reports each step
- * back, which arrives here as a volume change about a second apart. Those are feedback, not
- * presses: while a target is pending, changes heading toward it (or landing on it) are ignored,
- * and only a change that goes elsewhere, or arrives after the target settled, counts as a press.
- * Without this, one tap became five, one a second (seen 2026-11-13).
- *
- * And a set is only a nudge: CEC has no "go to 35", so Android taps the soundbar's key once per
- * set and the soundbar moves a step. The service keeps nudging, one tap per report that comes
- * back (or after a pause if none does), until the level lands, with a cap on taps and time.
- * With a Roku soundbar's address configured the taps go over the network instead, all at once, so
- * the level jumps rather than ticks; the CEC nudges remain the fallback if the network taps fail.
+ * With levels set (Settings: Volume levels), each press is carried on to the next of 10, 20, 25 or
+ * 50 levels. On the Hisense this is off: the audio goes to a Roku soundbar over eARC, which can only
+ * be walked a step at a time, by CEC or by network, and it chirps and stalls on the way (2026-11-13).
+ * The code stays for a soundbar that takes an absolute volume. Mute is never touched.
  *
  * Enabled over adb, next to any other service already listed:
  *   adb shell settings put secure enabled_accessibility_services \
@@ -57,22 +48,32 @@ class VolumeService : AccessibilityService() {
     private val volumeChanged = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) != AudioManager.STREAM_MUSIC) return
+            if (intent.action == "android.media.STREAM_MUTE_CHANGED_ACTION") { pill(); return }
             val now = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1)
             val before = intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", now)
             if (now < 0 || now == before) return
-            onVolume(before, now)
+            val cfg = ConfigStore.peek(this@VolumeService)?.volume
+            if ((cfg?.levels ?: 0) > 0) onVolume(before, now) else pill()
         }
     }
 
+    /** Pill-only: show the real level, as Fire OS has it. */
+    private fun pill() {
+        val cfg = ConfigStore.peek(this)?.volume
+        if (cfg != null && !cfg.pill) return
+        hud?.show(audio.getStreamVolume(AudioManager.STREAM_MUSIC), audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC), audio.isStreamMute(AudioManager.STREAM_MUSIC))
+    }
+
     override fun onServiceConnected() {
+        System.setProperty("http.keepAlive", "false") // see tapSoundbar
         audio = getSystemService(AudioManager::class.java)
         hud = VolumeHud(this)
-        registerReceiver(volumeChanged, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
+        registerReceiver(volumeChanged, IntentFilter().apply { addAction("android.media.VOLUME_CHANGED_ACTION"); addAction("android.media.STREAM_MUTE_CHANGED_ACTION") })
         Log.i("Glass", "volume service connected")
     }
 
     private fun onVolume(before: Int, now: Int) {
-        val levels = ConfigStore.peek(this)?.volume?.levels ?: 20
+        val levels = ConfigStore.peek(this)?.volume?.levels ?: 0
         if (levels <= 0) return
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val step = (max / levels).coerceAtLeast(1)
@@ -82,7 +83,7 @@ class VolumeService : AccessibilityService() {
             val reached = if (targetUp) now >= pending else now <= pending
             val toward = if (targetUp) now > before else now < before
             if (t - targetAt < SETTLE_MS && (toward || reached)) {
-                hud?.show(pending / step, levels, pending)
+                hud?.show(pending, max, false, levels)
                 if (reached) landed(now, t) else nudge()
                 return
             }
@@ -95,7 +96,7 @@ class VolumeService : AccessibilityService() {
         val up = now > before
         val level = (if (up) before / step + 1 else ceil(before / step.toFloat()).toInt() - 1).coerceIn(0, levels)
         val goal = (level * step).coerceIn(0, max)
-        hud?.show(level, levels, goal)
+        hud?.show(goal, max, false, levels)
         lastGoal = goal; corrected = false
         if (goal != now) {
             target = goal; targetUp = goal > now; targetAt = t; nudges = 0
@@ -158,9 +159,14 @@ class VolumeService : AccessibilityService() {
             Thread {
                 Thread.sleep(25L * i)
                 val result = runCatching {
-                    val c = java.net.URL("http://$host:8060/keypress/$key").openConnection() as java.net.HttpURLConnection
+                    // Direct, never through a system proxy: the soundbar is on the LAN.
+                    val c = java.net.URL("http://$host:8060/keypress/$key").openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
                     try {
+                        // One fresh connection per press, closed after: the soundbar's little web server
+                        // does not cope with the keep-alive pooling HttpURLConnection does by default,
+                        // and the next press would talk into a dead socket until it timed out.
                         c.requestMethod = "POST"; c.connectTimeout = 1000; c.readTimeout = 2500; c.doOutput = true
+                        c.setRequestProperty("Connection", "close")
                         c.outputStream.close()
                         c.responseCode
                     } finally { c.disconnect() }
@@ -189,11 +195,13 @@ class VolumeService : AccessibilityService() {
         val what = "${event.className} ${event.text}"
         Log.i("Glass", "volume: systemui window $what")
         if (!what.contains("olume")) return
-        val levels = ConfigStore.peek(this)?.volume?.levels ?: 20
-        if (levels <= 0) return
-        val step = (audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / levels).coerceAtLeast(1)
+        val cfg = ConfigStore.peek(this)?.volume
+        if (cfg != null && !cfg.pill) return
+        val levels = cfg?.levels ?: 0
+        if (levels <= 0) { pill(); return }
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val shown = if (target >= 0) target else audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-        hud?.show(shown / step, levels, shown)
+        hud?.show(shown, max, audio.isStreamMute(AudioManager.STREAM_MUSIC), levels)
     }
     override fun onInterrupt() = Unit
 

@@ -130,10 +130,15 @@ data class SoundConfig(val mode: SoundMode = SoundMode.Glass)
 @Serializable
 data class AwakeConfig(val minutes: Int = 0)
 
-/** How many steps the volume keys move through (the TV has 100). 0 = System: Fire OS keeps its own popup. */
+/**
+ * [pill]: draw the launcher's volume pill over Fire OS's box. [levels]: how many steps the volume
+ * keys move through instead of the TV's 100 (0 = Fire TV's own steps; the default, since a soundbar
+ * on CEC can only be walked a step at a time).
+ */
 @Serializable
 data class VolumeConfig(
-    val levels: Int = 20,
+    val pill: Boolean = true,
+    val levels: Int = 0,
     /**
      * A Roku soundbar's address, when the TV's audio goes to one over eARC. The TV can only tap the
      * soundbar's volume key once per CEC round trip (about a second each), so a level of five steps
