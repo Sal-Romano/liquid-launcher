@@ -143,33 +143,34 @@ class VolumeService : AccessibilityService() {
     }
 
     /**
-     * The rest of the way over the network: one Roku ECP key press per step, 60 ms apart. The TV
-     * learns the result from the soundbar's next CEC report, which the pending target absorbs. If
-     * a press fails, the CEC nudges take over after their pause.
+     * The rest of the way over the network: one Roku ECP key press per step, all in flight at once,
+     * 25 ms apart, each on its own connection, so one slow answer (the soundbar stalls now and then
+     * while it handles a press) cannot hold the others back. From the TV the soundbar answers in
+     * about 55 ms, so the steps land within a quarter of a second. The TV learns the result from
+     * the soundbar's next CEC report, which the pending target absorbs; a press that times out has
+     * usually landed anyway, and [landed] corrects whatever did not.
      */
     private fun tapSoundbar(host: String, delta: Int) {
         val key = if (delta > 0) "VolumeUp" else "VolumeDown"
         handler.postDelayed(nudgeAgain, NUDGE_WAIT_MS * 2)
-        Thread {
-            repeat(kotlin.math.abs(delta)) {
+        val t0 = SystemClock.uptimeMillis()
+        repeat(kotlin.math.abs(delta)) { i ->
+            Thread {
+                Thread.sleep(25L * i)
                 val result = runCatching {
                     val c = java.net.URL("http://$host:8060/keypress/$key").openConnection() as java.net.HttpURLConnection
                     try {
-                        // The soundbar usually answers in 50 ms but sometimes takes over a second.
                         c.requestMethod = "POST"; c.connectTimeout = 1000; c.readTimeout = 2500; c.doOutput = true
                         c.outputStream.close()
                         c.responseCode
                     } finally { c.disconnect() }
                 }
                 val code = result.getOrNull()
-                if (code == null || code !in 200..299) {
-                    // Carry on: a slow press may still have landed, and the landing correction and
-                    // the CEC nudges pick up whatever did not.
-                    Log.w("Glass", "soundbar tap failed at $host: ${code ?: result.exceptionOrNull()?.toString()}")
-                }
-                Thread.sleep(60)
-            }
-        }.start()
+                val took = SystemClock.uptimeMillis() - t0
+                if (code == null || code !in 200..299) Log.w("Glass", "soundbar tap ${i + 1} failed after $took ms: ${code ?: result.exceptionOrNull()?.toString()}")
+                else Log.i("Glass", "soundbar tap ${i + 1}/${kotlin.math.abs(delta)} ok at $took ms")
+            }.start()
+        }
     }
 
     private fun settle(t: Long) {
