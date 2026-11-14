@@ -3,36 +3,46 @@
 The Wii tile in the launcher is a hook: `GET http://<mac-mini>:8766/play`. On the Mac mini under
 the TV, `wii.py` makes the Wii behave like an app on the TV:
 
-- **Opening** (`/play`): a paused Wii thaws; otherwise Dolphin boots straight into the Wii Menu,
-  fullscreen, with no Dolphin window (`-b -C Dolphin.Display.Fullscreen=True -n
-  0000000100000002`). The display wakes, and the TV switches to the Mac's HDMI input by
-  injecting `KEYCODE_TV_INPUT_HDMI_2` (244) over the TV's network adb, while the Wii Menu loads.
-  About 4 s from a cold start, 1-2 s to resume. It has a deadline: the Wii up within 15 s and
-  the TV switched by 22 s, or it answers `{"ok": false, "error": "..."}` and never switches the
-  TV after giving up. The launcher waits 30 s, keeps "Starting Wii…" up until the answer, and
-  shows the error ("Wii: Dolphin didn't start", "Couldn't reach Wii") instead of switching.
+- **Opening** (`/play`): a paused Wii thaws where it was; otherwise Dolphin starts straight into
+  the Wii Menu, full screen. With wii-channels installed (below) it starts through
+  `wiichan.py start-dolphin`; without, in batch mode with this file's flags (`-b -C
+  Dolphin.Display.Fullscreen=True -C Dolphin.Interface.CursorVisibility=0 -n 0000000100000002`).
+  The display wakes, and the TV switches to the Mac's HDMI input by injecting
+  `KEYCODE_TV_INPUT_HDMI_2` (244) over the TV's network adb, but only once a Dolphin window fills
+  the screen, so the TV never shows the desktop or Dolphin's game list while it starts. Measured
+  2026-11-14, from the request: game list at about 0.9 s, the whole screen covered 50 ms later
+  (below), full screen at about 1.8 s, the answer at 2.6 s. It has a deadline: the Wii up within 15 s and the TV switched by
+  22 s, or it answers `{"ok": false, "error": "..."}` and never switches the TV after giving up.
+  The launcher waits 30 s, keeps "Starting Wii…" up until the answer, and shows the error
+  ("Wii: the Wii didn't come up", "Couldn't reach Wii") instead of switching.
+- **Never Dolphin's game list.** If a running Dolphin brought forward by the tile (or by the TV
+  coming back) shows something other than the Wii within 2.5 s, which in practice is its game
+  list, it is quit and started over in the Wii Menu, like resetting a real Wii: the game list is
+  no use with a Wii Remote. Not while someone is using the Mac (below). How it tells: the on-screen
+  windows (CGWindowListCopyWindowInfo, run in the desktop session; no window names, which would
+  need Screen Recording permission) include a Dolphin window as big as the display.
 - **Leaving pauses it.** While Dolphin runs, a watcher asks the TV every 2 s what it shows
   (`dumpsys power`, `window` and `tv_input`; HDMI 2 is the session `HdmiInputService/HW3`).
   After 4 s on anything else (Home, another app or input, the TV asleep), or 2 min with the TV
-  not answering (switched off), Finder is brought forward and Dolphin, started with
-  `Interface.PauseOnFocusLost`, pauses its own emulation (RenderWidget.cpp pauses on
-  WindowDeactivate and resumes on WindowActivate). When the TV shows the Mac again, by the tile
-  or by the TV's own input menu, Dolphin is brought forward and resumes. Only a Wii this
-  listener paused is brought forward, so it never grabs the screen from someone using the Mac.
-  Measured on the TV: paused about 3 s after Home, resumed in 1.7 s by the tile; Dolphin at
-  about 43 % CPU running and 4 % paused. At first the process was frozen with SIGSTOP instead
-  (0 % CPU), but a frozen app shows a spinning wheel to anyone pointing at it over Screen
-  Sharing, and it was force-quit twice that way.
+  not answering (switched off), Dolphin is frozen where it is (SIGSTOP, 0 % CPU), and thawed when
+  the TV shows the Mac again, by the tile or by the TV's own input menu. Freezing moves no focus,
+  so the game is still the window in front when it thaws. Only a Wii this listener paused is
+  thawed and brought forward, so it never grabs the screen from someone using the Mac. History:
+  for a while the Wii was paused by bringing Finder forward instead, with Dolphin's
+  `PauseOnFocusLost` (no spinning wheel over Screen Sharing), but wii-channels runs Dolphin in
+  normal mode, and a normal-mode Dolphin brought back forward showed its game list on the TV
+  instead of the game (2026-11-14).
 - **After twelve hours paused it quits** (SIGTERM, which Dolphin honours cleanly; SIGKILL after
   10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
   If Dolphin closes while the TV shows it (Wii Menu, power off), the TV goes back to the launcher.
-- **Not while someone is at the Mac.** While someone is using the Mac over Screen Sharing (VNC,
-  port 5900), meaning a session connected *and* its pointer moved in the last minute, the Wii
-  is not paused from here; clicking Dolphin wakes it the way Dolphin does, and once it has been
-  left alone for a minute it is paused again. A session merely left open on a laptop does not
-  count: at first it did, and the Wii never paused. Note that an open session steers the Mac's
-  pointer from the laptop; parked at the bottom edge of the Screen Sharing window, it holds the
-  Dock open over the game.
+- **Not while someone is at the Mac.** Someone using the Mac over Screen Sharing (VNC, port 5900)
+  means a session connected *and* its pointer moved in the last minute. Then the Wii is not
+  paused, a frozen one thaws (a frozen app shows a spinning wheel to anyone pointing at it; it
+  was force-quit twice that way), and nothing is started over. While the Wii is frozen and a
+  session is connected, the watcher looks every second instead of every two, so a frozen Dolphin
+  thaws about a second after the pointer moves. Once the pointer has been still for a minute,
+  it is frozen again. A session merely left open on a laptop does not count: at first it did,
+  and the Wii never paused.
 - **The Wii Remote bar** (a Mayflash DolphinBar) gets power only while Dolphin runs unpaused, so
   the Wii Remotes switch off on every pause (press a button to reconnect) and the bar's glow
   goes dark. That needs a USB hub with per-port power switching between the Mac and the bar:
@@ -41,24 +51,34 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   works, for example Satechi's Mac Mini Hub (M1/M2): plug it in, plug the bar into it, and the
   daemon finds the bar by name (`uhubctl -s Mayflash`). Until then the bar simply stays on.
 - **With wii-channels** ([Sal-Romano/wii-channels](https://github.com/Sal-Romano/wii-channels),
-  game channels in the Wii Menu, deployed to `~/wii-channels`): a cold start goes through
-  `wiichan.py start-dolphin`, which starts Dolphin out of batch mode (channels switch games by
-  sending Dolphin an open-document event, and batch mode would quit instead) with
-  `PauseOnFocusLost` among its settings. Its service starts a Dolphin at login; any Dolphin that
-  appears while nobody is at the Mac is treated as a Wii for the TV and paused when the TV is
-  elsewhere.
-- **Fallback for a Dolphin that does not pause itself** (started without `PauseOnFocusLost`):
-  if it still uses more than 15 % of a core a few seconds after being paused, it is frozen with
-  SIGSTOP, and thawed when the TV comes back or someone at the Mac moves the pointer.
-- Dolphin opened by someone at the Mac (Screen Sharing, a keyboard) is left alone.
+  game channels in the Wii Menu, deployed to `~/wii-channels`): Dolphin runs in normal mode, not
+  batch mode, because channels switch games by sending Dolphin an open-document event and batch
+  mode would quit instead. Its service also starts a Dolphin at login; any Dolphin that appears
+  while nobody is at the Mac is treated as a Wii for the TV and paused when the TV is elsewhere.
+  Dolphin opened by someone at the Mac (Screen Sharing, a keyboard) is left alone.
 - **No mouse pointer on the TV.** Every open or resume parks the pointer at the middle of the
   right edge (CGWarpMouseCursorPosition), where no Dock, menu bar or hot corner opens and the
   arrow is drawn almost off screen; left at the bottom edge it held the Dock open over the game.
   Dolphin is also started with `CursorVisibility` 0 (Never) for the pointer over the game.
   Moving the pointer is not mouse movement, so it does not send a Dock that is already up back
-  down. What keeps the Dock off the game is `defaults write com.apple.dock autohide-delay
-  -float 999999` (then `killall Dock`): the Dock waits that long before sliding up over a
-  full-screen app. The desktop Dock does not auto-hide, so it is unaffected.
+  down.
+- **A black screen between games.** A channel switching games stops Dolphin's emulation and
+  boots the new game in a new game window, which goes full screen once the game runs, so the
+  Mac's own desktop shows for a moment in between. The mini is set up so that moment is black:
+  - Black wallpaper: macOS's own `/System/Library/Desktop Pictures/Solid Colors/Black.png`, set
+    with `NSWorkspace setDesktopImageURL` (osascript -l JavaScript, run in the desktop session).
+  - The Dock and the menu bar hide themselves: `defaults write com.apple.dock autohide -bool
+    true` (then `killall Dock`) and `defaults write NSGlobalDomain _HIHideMenuBar -bool true`.
+    The Dock's `autohide-delay` of 999999, set earlier against the Dock over the game, was
+    removed: with auto-hide on, it would have left the Dock unreachable for anyone at the Mac.
+  - Reduce Motion, so going in and out of full screen is a fade, not a slide:
+    `com.apple.universalaccess reduceMotion` and `com.apple.Accessibility ReduceMotionEnabled`.
+  - Dolphin's game window has the whole screen as its normal size, so on its way to full screen
+    it covers the desktop and the game list instead of being 640x480 in the middle. That size is
+    `[renderwidget] geometry` in `~/Library/Application Support/Dolphin/Config/Qt.ini`, a
+    QWidget::saveGeometry() blob, rewritten while Dolphin was closed (Dolphin rewrites Qt.ini
+    when it quits; the old file is kept as `Qt.ini.before-wii-*`). Dolphin keeps that size from
+    then on: it saves the window's normal size each time it goes full screen.
 
 `/home` sends the TV back to the launcher, `/quit` quits Dolphin and goes home, `/status` reports
 (running, paused, session, what the TV shows, the bar). State lives in `state.json` next to
@@ -76,8 +96,8 @@ Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
   IOKit -framework CoreFoundation -framework Security -lobjc`, in a path without spaces.
 - macOS does not reopen apps at login (`defaults -currentHost write com.apple.loginwindow
   TALLogoutSavesState -bool false`), so a reboot does not leave a Dolphin window waiting. One
-  that is open anyway (opened by hand) is brought forward as it is: the listener never closes a
-  Dolphin it did not start, since a self-paused game looks just as idle as a game list.
+  that is open anyway (opened by hand) is brought forward as it is when it shows the Wii, and
+  started over when it shows its game list (above), unless someone is using the Mac.
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
 - Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,
