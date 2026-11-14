@@ -446,11 +446,15 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
         }.getOrElse { Log.w("Glass", "place lookup failed: ${it.message}"); PlaceAnswer.Unavailable }
     }
 
-    /** A small dark map centred on [lat], [lon] (a 1280x720 PNG), through the relay; null if there is none to be had. */
-    suspend fun map(lat: Double, lon: Double, zoom: Int = 4): ByteArray? = withContext(Dispatchers.IO) {
+    /**
+     * A dark map centred on [lat], [lon] through the relay: 1280x720 with country names, or [small],
+     * a 640x360 thumbnail without them. Null if there is none to be had.
+     */
+    suspend fun map(lat: Double, lon: Double, zoom: Int = 4, small: Boolean = false): ByteArray? = withContext(Dispatchers.IO) {
         val base = server ?: return@withContext null
         runCatching {
-            val request = Request.Builder().url("$base/api/tv/${keys.tvId}/map?lat=$lat&lon=$lon&zoom=$zoom").header("Authorization", "Bearer ${keys.secret}").build()
+            val size = if (small) "&size=small" else ""
+            val request = Request.Builder().url("$base/api/tv/${keys.tvId}/map?lat=$lat&lon=$lon&zoom=$zoom$size").header("Authorization", "Bearer ${keys.secret}").build()
             http.newCall(request).execute().use { r -> if (r.isSuccessful) r.body.bytes() else null }
         }.getOrNull()
     }

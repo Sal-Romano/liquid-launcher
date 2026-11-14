@@ -335,7 +335,7 @@ export class Tv extends DurableObject<Env> {
   }
 
   /** A small dark map centred on [lat], [lon] (see maps.ts), a PNG; cached here for 30 days. */
-  async map(token: string | null, lat: number | null, lon: number | null, zoom: number | null): Promise<Reply | Photo> {
+  async map(token: string | null, lat: number | null, lon: number | null, zoom: number | null, small = false): Promise<Reply | Photo> {
     if (!(await this.whoIs(token))) return reply(401, "not this TV's");
     const key = this.env.GOOGLE_MAPS_KEY;
     if (!key) return reply(503, "no maps key on the relay");
@@ -344,10 +344,10 @@ export class Tv extends DurableObject<Env> {
     const la = Math.round(lat * 100) / 100;
     const lo = Math.round(lon * 100) / 100;
     const z = Math.min(8, Math.max(2, Math.round(zoom ?? 4)));
-    const k = `${la.toFixed(2)},${lo.toFixed(2)},${z}`;
+    const k = `${la.toFixed(2)},${lo.toFixed(2)},${z}${small ? ",s" : ""}`;
     const hit = this.sql.exec<{ data: ArrayBuffer; at: number }>("SELECT data, at FROM map_cache WHERE k = ?", k).toArray()[0];
     if (hit && Date.now() - hit.at < MAPS_CACHE_FOR) return { type: "image/png", bytes: hit.data };
-    const got = await fetchMap(key, la, lo, z);
+    const got = await fetchMap(key, la, lo, z, small);
     if (!got.bytes) return reply(got.status, got.error ?? "no map");
     if (got.bytes.byteLength < CHUNK * 1.9) {
       this.sql.exec("DELETE FROM map_cache WHERE at < ?", Date.now() - MAPS_CACHE_FOR);

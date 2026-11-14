@@ -42,13 +42,16 @@ object Insights {
         info
     }
 
-    /** The map around [info]'s spot, from the cache or through the relay; null without a spot or a map. */
+    /**
+     * The card's thumbnail map around [info]'s spot (no names, zoomed out a step so the neighbouring
+     * countries still fit), from the cache or through the relay; null without a spot or a map.
+     */
     suspend fun map(context: Context, info: PhotoInfo, link: PhoneLink): ImageBitmap? = withContext(Dispatchers.IO) {
         val (lat, lon) = info.where ?: return@withContext null
         val dir = File(context.cacheDir, "maps").apply { mkdirs() }
-        val file = File(dir, String.format(Locale.US, "%.2f_%.2f_4.png", lat, lon))
+        val file = File(dir, String.format(Locale.US, "%.2f_%.2f_3s.png", lat, lon))
         if (!file.exists()) {
-            val bytes = link.map(lat, lon) ?: return@withContext null
+            val bytes = link.map(lat, lon, zoom = 3, small = true) ?: return@withContext null
             val tmp = File(dir, file.name + ".tmp")
             tmp.writeBytes(bytes)
             if (!tmp.renameTo(file)) tmp.delete()

@@ -1335,11 +1335,16 @@
     const d = photo.details || {};
     const parts = [];
     if (typeof d.lat === "number" && typeof d.lon === "number") {
+      // A pill with a real switch, so it reads as on or off at a glance: green, the location goes
+      // with the photo; grey, it stays on the phone.
       const on = photo.shareLocation;
-      const loc = el("button", "loc", on ? `📍 ${photo.place || coordinates(d.lat, d.lon)}` : "Location left out");
+      const loc = el("button", "loc");
+      loc.append(el("span", "loc-text", on ? `📍 ${photo.place || coordinates(d.lat, d.lon)}` : "📍 Location off"), el("span", "switch"));
       loc.type = "button";
+      loc.setAttribute("role", "switch");
+      loc.setAttribute("aria-checked", String(on));
       loc.setAttribute("aria-pressed", String(on));
-      loc.title = on ? "Tap to leave the location out" : "Tap to include the location";
+      loc.setAttribute("aria-label", on ? "Location included. Tap to leave it out" : "Location left out. Tap to include it");
       loc.addEventListener("click", () => {
         if (!photo) return;
         photo.shareLocation = !photo.shareLocation;

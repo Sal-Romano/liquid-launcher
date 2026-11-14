@@ -125,6 +125,7 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
                 GlassVariant.Tile -> Material(bevel = minOf(r.height * 0.19f, 36f), thick = 14f, lod = 2.6f, deep = 0f, tint = 0.16f)
                 GlassVariant.Pill -> Material(bevel = minOf(r.height * 0.35f, 16f), thick = 6f, lod = 3.2f, deep = 0f, tint = 0.24f)
                 GlassVariant.Sheet -> Material(bevel = 18f, thick = 6f, lod = 4f, deep = 1f, tint = 0.34f)
+                GlassVariant.Card -> Material(bevel = minOf(r.height * 0.16f, 40f), thick = 12f, lod = 3.4f, deep = 0.35f, tint = 0.22f)
             }
             GLES30.glUniform1f(u["uBevel"]!!, if (refraction) m.bevel else 1f)
             GLES30.glUniform1f(u["uThick"]!!, if (refraction) m.thick else 0f)

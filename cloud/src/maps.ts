@@ -96,13 +96,30 @@ const STYLE = [
   "feature:water|element:labels|visibility:off",
 ];
 
+/**
+ * The thumbnail: at a card's size country names are specks, so it has none, just the borders a
+ * little brighter, the land and the water. 640x360 (320x180 at scale 2).
+ */
+const SMALL_STYLE = [
+  "element:geometry|color:0x1c2331",
+  "element:labels|visibility:off",
+  "feature:administrative|element:geometry|visibility:off",
+  "feature:administrative.country|element:geometry.stroke|visibility:on|color:0x8292b4|weight:1",
+  "feature:landscape|element:geometry|color:0x252f42",
+  "feature:poi|visibility:off",
+  "feature:road|visibility:off",
+  "feature:transit|visibility:off",
+  "feature:water|element:geometry|color:0x0b1220",
+];
+
 export type MapImage = { status: number; bytes?: ArrayBuffer; error?: string };
 
-export async function fetchMap(key: string, lat: number, lon: number, zoom: number): Promise<MapImage> {
-  const style = STYLE.map((s) => `&style=${encodeURIComponent(s)}`).join("");
+export async function fetchMap(key: string, lat: number, lon: number, zoom: number, small = false): Promise<MapImage> {
+  const style = (small ? SMALL_STYLE : STYLE).map((s) => `&style=${encodeURIComponent(s)}`).join("");
+  const size = small ? "320x180" : "640x360";
   const r = await fetch(
     `https://maps.googleapis.com/maps/api/staticmap?center=${lat.toFixed(4)},${lon.toFixed(4)}&zoom=${zoom}` +
-      `&size=640x360&scale=2&format=png&maptype=roadmap&language=en${style}&key=${key}`,
+      `&size=${size}&scale=2&format=png&maptype=roadmap&language=en${style}&key=${key}`,
   );
   if (!r.ok) return { status: 502, error: `Google answered ${r.status}` };
   if (!(r.headers.get("Content-Type") ?? "").startsWith("image/")) return { status: 502, error: "Google sent no image" };

@@ -18,7 +18,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 
-enum class GlassVariant { Tile, Pill, Sheet }
+/**
+ * Tile: a thick lens with a clear middle (the dock). Pill: thinner, a little more frost. Sheet:
+ * frosted through (it carries rows of text). Card: liquid glass for a panel of text over the photo,
+ * a tile's bevel bending the photo at the edges round a middle just soft enough to read on.
+ */
+enum class GlassVariant { Tile, Pill, Sheet, Card }
 
 /**
  * The camera that projects a panel's 3D rotation (graphicsLayer.cameraDistance). The platform

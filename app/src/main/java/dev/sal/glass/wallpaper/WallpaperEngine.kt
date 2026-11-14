@@ -73,6 +73,12 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     private var transitionEnded: CompletableDeferred<Unit>? = null
     /** A test from a phone on screen (a file in the cache, not one of the photos); the rotation holds while it is up. */
     private var preview: File? = null
+    /** Photos shown before the one on screen, oldest first: where Back through the photos goes (the info card's Left). */
+    private val history = ArrayDeque<File>()
+    private var goingBack = false
+    private var navigating = false
+    /** Something holds the rotation (the info card is open, someone is reading it): the interval does not move on. */
+    var held = false
     private var previewEnd: Job? = null
 
     fun start() {
@@ -96,6 +102,33 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
 
     /** Skip to the next photo now (FF button). */
     fun skip() { viewModelScope.launch { advance() } }
+
+    /** On to the next photo, unless one is already on its way (the info card's Right). */
+    fun next() {
+        if (!transitioning && !navigating) skip()
+    }
+
+    /**
+     * Back to the photo shown before this one (the info card's Left). Right afterwards comes back
+     * to the photo just left. Nothing happens when there is no earlier photo or one is on its way.
+     */
+    fun previous() {
+        if (transitioning || navigating) return
+        val here = current?.file
+        var back: File? = null
+        while (back == null && history.isNotEmpty()) back = history.removeLast().takeIf { it in known && it != here }
+        val target = back ?: return
+        navigating = true
+        viewModelScope.launch {
+            try {
+                goingBack = true
+                if (!showNow(target)) { goingBack = false; return@launch }
+                if (here != null && here in known) { queue.remove(here); queue.addFirst(here) }
+            } finally {
+                navigating = false
+            }
+        }
+    }
 
     fun togglePause() { paused = !paused }
 
@@ -253,6 +286,12 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     fun onTransitionDone() {
         val n = next ?: return
         val outgoing = current?.file
+        // What was on screen becomes history, unless this was a step back or it was a test.
+        if (outgoing != null && !goingBack && outgoing != preview && outgoing in known && outgoing != n.file) {
+            history.addLast(outgoing)
+            while (history.size > 50) history.removeFirst()
+        }
+        goingBack = false
         current = n
         next = null
         transitioning = false
@@ -279,7 +318,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         ticker = viewModelScope.launch {
             while (true) {
                 delay(intervalMs)
-                if (!paused && preview == null) advance()
+                if (!paused && preview == null && !held) advance()
             }
         }
     }

@@ -23,10 +23,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +41,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,26 +56,30 @@ import dev.sal.glass.data.PhotoInfos
 import dev.sal.glass.data.Wallpapers
 import dev.sal.glass.ui.glass.GlassLayerId
 import dev.sal.glass.ui.glass.GlassVariant
-import dev.sal.glass.ui.glass.SheetShape
 import dev.sal.glass.ui.glass.glass
+import dev.sal.glass.ui.glass.SquircleShape
 import dev.sal.glass.ui.theme.GlassFonts
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.Calendar
 import java.util.Locale
 
-private val Title = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.SemiBold, fontSize = 21.sp)
-private val Sub = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-private val Line = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp)
-private val MapShape = RoundedCornerShape(13.dp)
+// The card is clear glass now, so its text carries a soft shadow to stay legible over any photo.
+private val Lift = Shadow(Color.Black.copy(alpha = 0.5f), Offset(0f, 1.5f), 6f)
+private val Title = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, shadow = Lift)
+private val Sub = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 13.sp, shadow = Lift)
+private val Line = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 12.sp, shadow = Lift)
+private val Hint = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 18.sp, shadow = Lift)
+private val MapShape = RoundedCornerShape(10.dp)
+private val BarShape = SquircleShape(18.dp, 0.6f)
 private val Pin = Color(0xFFFF6B57)
 private val Easing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 
 /**
- * About the photo on screen, like the label beside a picture: a small dark map zoomed out to the
- * neighbouring countries with a pin on the spot, where it is, when it was taken, who sent it and with
- * what. Bottom left, over the photo; the clock and dock step aside while it is up. [info] null: still
- * looking it up. Back closes.
+ * About the photo on screen, as a caption bar along the bottom: a thumbnail map zoomed out to the
+ * neighbouring countries with a pin on the spot; where it is, with the flag; when it was taken, who
+ * sent it, the camera. Left and Right go through the photos with it (the hint on the right), and the
+ * clock and dock step aside while it is up. [info] null: still looking it up.
  */
 @Composable
 fun PhotoInfoCard(visible: Boolean, file: File?, info: PhotoInfo?, map: ImageBitmap?, mapLoading: Boolean, onDismiss: () -> Unit) {
@@ -82,41 +87,57 @@ fun PhotoInfoCard(visible: Boolean, file: File?, info: PhotoInfo?, map: ImageBit
     LaunchedEffect(visible) { if (visible) { delay(60); runCatching { focus.requestFocus() } } }
     AnimatedVisibility(
         visible,
-        enter = fadeIn(tween(240, easing = Easing)) + slideInVertically(tween(300, easing = Easing)) { it / 10 },
+        enter = fadeIn(tween(240, easing = Easing)) + slideInVertically(tween(300, easing = Easing)) { it / 6 },
         exit = fadeOut(tween(160)),
     ) {
         val context = LocalContext.current
-        Box(Modifier.fillMaxSize().dismissOnBack(onDismiss), contentAlignment = Alignment.BottomStart) {
+        Box(Modifier.fillMaxSize().dismissOnBack(onDismiss), contentAlignment = Alignment.BottomCenter) {
             Row(
-                Modifier.padding(start = 48.dp, bottom = 40.dp).width(500.dp)
-                    .glass(SheetShape, GlassVariant.Sheet, layer = GlassLayerId.Overlay)
+                Modifier.padding(bottom = 30.dp).widthIn(min = 400.dp, max = 680.dp)
+                    .glass(BarShape, GlassVariant.Card, layer = GlassLayerId.Overlay)
                     .focusRequester(focus).focusable()
-                    .padding(12.dp),
+                    .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                MiniMap(map, spot = info?.where != null, loading = info == null || mapLoading, Modifier.width(208.dp).aspectRatio(16f / 9f))
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
+                MiniMap(map, spot = info?.where != null, loading = info == null || mapLoading, Modifier.width(112.dp).aspectRatio(16f / 9f))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f, fill = false)) {
                     val place = info?.place
-                    Text(
-                        place?.name ?: file?.let { fallbackTitle(it, info) } ?: "",
-                        color = Color.White, style = Title, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            place?.name ?: file?.let { fallbackTitle(it, info) } ?: "",
+                            Modifier.weight(1f, fill = false), color = Color.White, style = Title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        val where = when {
+                            info == null -> "Looking it up…"
+                            place != null -> listOfNotNull(place.region, place.country).distinct().filter { it != place.name }
+                                .joinToString(", ").let { text -> listOf(flag(place.countryCode), text).filter { it.isNotEmpty() }.joinToString(" ") }
+                            info.where != null -> coordinates(info.where!!)
+                            else -> "No location"
+                        }
+                        if (where.isNotEmpty()) {
+                            Spacer(Modifier.width(10.dp))
+                            Text(where, color = Color.White.copy(alpha = 0.82f), style = Sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    val from = info?.from
+                    val own = info != null && from == null && file != null && file.parentFile?.name != "preview" && !Wallpapers.isFromPhone(file)
+                    val details = listOfNotNull(
+                        info?.takenAt?.let { taken(context, it) },
+                        from?.let { "Sent by $it" + (info.sentAt?.let { at -> ", ${sent(context, at)}" } ?: "") },
+                        if (own) "One of the TV's own photos" else null,
+                        info?.camera,
                     )
-                    val where = when {
-                        info == null -> "Looking this photo up…"
-                        place != null -> listOfNotNull(place.region, place.country).distinct().filter { it != place.name }
-                            .joinToString(", ").let { text -> listOf(flag(place.countryCode), text).filter { it.isNotEmpty() }.joinToString("  ") }
-                        info.where != null -> "Somewhere at ${coordinates(info.where!!)}"
-                        else -> "No location in this photo"
+                    if (details.isNotEmpty()) {
+                        Text(
+                            details.joinToString("  ·  "), Modifier.padding(top = 3.dp),
+                            color = Color.White.copy(alpha = 0.72f), style = Line, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    if (where.isNotEmpty()) Text(where, Modifier.padding(top = 4.dp), color = Color.White.copy(alpha = 0.85f), style = Sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(8.dp))
-                    info?.takenAt?.let { taken(context, it) }?.let { Text(it, color = Color.White.copy(alpha = 0.78f), style = Line, maxLines = 1) }
-                    info?.from?.let { from ->
-                        Text("Sent by $from" + (info.sentAt?.let { " · ${sent(context, it)}" } ?: ""), color = Color.White.copy(alpha = 0.78f), style = Line, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    info?.camera?.let { Text(it, color = Color.White.copy(alpha = 0.55f), style = Line, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
+                Spacer(Modifier.width(14.dp))
+                // Left and Right go through the photos.
+                Text("‹ ›", Modifier.padding(end = 6.dp), color = Color.White.copy(alpha = 0.5f), style = Hint)
             }
         }
     }
@@ -132,14 +153,14 @@ private fun MiniMap(map: ImageBitmap?, spot: Boolean, loading: Boolean, modifier
         when {
             map != null -> {
                 Image(map, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                PulsingPin(Modifier.size(30.dp))
+                PulsingPin(Modifier.size(24.dp))
             }
             loading -> {
                 val t = rememberInfiniteTransition(label = "mapLoading")
                 val a by t.animateFloat(0.25f, 0.6f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "mapLoadingAlpha")
-                Text("Finding the map…", color = Color.White.copy(alpha = a), style = Line)
+                Text("…", color = Color.White.copy(alpha = a), style = Title)
             }
-            else -> Text(if (spot) "No map right now" else "No location", color = Color.White.copy(alpha = 0.5f), style = Line)
+            else -> Text(if (spot) "No map" else "—", color = Color.White.copy(alpha = 0.5f), style = Line)
         }
     }
 }
@@ -178,13 +199,13 @@ private fun coordinates(where: Pair<Double, Double>): String {
     return String.format(Locale.US, "%.2f° %s, %.2f° %s", kotlin.math.abs(lat), if (lat >= 0) "N" else "S", kotlin.math.abs(lon), if (lon >= 0) "E" else "W")
 }
 
-/** "Taken 14 July 2024 · 6:22 PM", from EXIF local time. */
+/** "Jul 14, 2024, 6:22 PM", from EXIF local time. */
 private fun taken(context: android.content.Context, takenAt: String): String? {
     val m = Regex("""(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})""").find(takenAt) ?: return null
     val (y, mo, d, h, mi) = m.destructured
     val cal = Calendar.getInstance().apply { clear(); set(y.toInt(), mo.toInt() - 1, d.toInt(), h.toInt(), mi.toInt()) }
-    val date = DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "dMMMMyyyy"), cal)
-    return "Taken $date · ${DateFormat.getTimeFormat(context).format(cal.time)}"
+    val date = DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "dMMMyyyy"), cal)
+    return "$date, ${DateFormat.getTimeFormat(context).format(cal.time)}"
 }
 
 /** "today, 11:42", "yesterday", or "Nov 14". */

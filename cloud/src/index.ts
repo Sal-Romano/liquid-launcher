@@ -52,7 +52,7 @@ export default {
     }
     if (action === "map" && !photoId && method === "GET") {
       const p = url.searchParams;
-      const map = await tv.map(bearer(request), number(p.get("lat")), number(p.get("lon")), number(p.get("zoom")));
+      const map = await tv.map(bearer(request), number(p.get("lat")), number(p.get("lon")), number(p.get("zoom")), p.get("size") === "small");
       if (!("bytes" in map)) return json(map);
       return new Response(map.bytes, { headers: { "Content-Type": map.type, "Cache-Control": "private, max-age=86400" } });
     }

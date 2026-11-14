@@ -170,6 +170,8 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     var info by remember { mutableStateOf<PhotoInfo?>(null) }
     var infoMap by remember { mutableStateOf<ImageBitmap?>(null) }
     var infoMapLoading by remember { mutableStateOf(false) }
+    // Someone reading the card, or going through the photos with it, should not have the rotation move on.
+    LaunchedEffect(overlay == Overlay.Info) { engine.held = overlay == Overlay.Info }
     LaunchedEffect(overlay == Overlay.Info, infoFile) {
         if (overlay != Overlay.Info || infoFile == null) return@LaunchedEffect
         info = null
@@ -258,12 +260,14 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                     val wasIdle = !dockVisible
                     wake()
                     // The info card is a label on the photo and never takes the remote, so it does not
-                    // depend on where focus is: Fast-forward moves on (the card follows the photo), the
-                    // arrows do nothing (the dock is hidden behind it), anything else closes it.
+                    // depend on where focus is: Left and Right (and Rewind, Fast-forward) go through the
+                    // photos with the card following, Up and Down do nothing (the dock is hidden behind
+                    // it), anything else closes it.
                     if (overlay == Overlay.Info) {
                         when (e.key) {
-                            Key.MediaFastForward, Key.MediaNext -> engine.skip()
-                            Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown -> Unit
+                            Key.DirectionRight, Key.MediaFastForward, Key.MediaNext -> { Sounds.tick(); engine.next() }
+                            Key.DirectionLeft, Key.MediaRewind, Key.MediaPrevious -> { Sounds.tick(); engine.previous() }
+                            Key.DirectionUp, Key.DirectionDown -> Unit
                             else -> overlay = Overlay.None
                         }
                         return@onPreviewKeyEvent true
