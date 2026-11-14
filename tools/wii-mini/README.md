@@ -17,9 +17,13 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   not answering (switched off), Dolphin is frozen with SIGSTOP. When the TV shows the Mac again,
   by the tile or by the TV's own input menu, it gets SIGCONT. Measured: paused 3-5 s after Home,
   resumed 5 s after switching back by the input menu.
-- **Not while someone is at the Mac.** While a Screen Sharing (VNC, port 5900) session is
-  connected, Dolphin is never left frozen under them: it does not pause, and a paused one thaws.
-  (2026-11-14: a paused Dolphin looked hung over Screen Sharing and was force-quit twice.)
+- **Not while someone is at the Mac.** While someone is using the Mac over Screen Sharing (VNC,
+  port 5900): a session connected *and* its pointer moved in the last minute, Dolphin is never
+  left frozen under them: it does not pause, and a paused one thaws. (2026-11-14: a paused
+  Dolphin looked hung over Screen Sharing and was force-quit twice.) A session merely left open
+  on a laptop does not count: at first it did, and the Wii never paused. Note that an open
+  session steers the Mac's pointer from the laptop; parked at the bottom edge of the Screen
+  Sharing window, it holds the Dock open over the game.
 - **After twelve hours paused it quits** (SIGCONT, then SIGTERM, which Dolphin honours cleanly;
   SIGKILL after 10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
   If Dolphin closes while the TV shows it (Wii Menu, power off), the TV goes back to the launcher.

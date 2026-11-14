@@ -11,8 +11,9 @@ The Wii behaves like an app on the TV:
   When it has shown something else for a few seconds (Home, another app or input, the TV
   asleep), Dolphin is frozen exactly where it was. When the TV shows this Mac again, however it
   got there, Dolphin thaws.
-- While someone uses this Mac over Screen Sharing, Dolphin is never left frozen under them:
-  it does not pause, and a paused one thaws.
+- While someone is using this Mac over Screen Sharing (a session connected and its pointer
+  moved in the last minute), Dolphin is never left frozen under them: it does not pause, and a
+  paused one thaws. A session merely left open on a laptop does not count.
 - After twelve hours paused, Dolphin quits. Anything not saved in the game is lost, as when a
   real Wii is switched off.
 - /play has a deadline: the Wii up within 15 s and the TV switched by 22 s, or it answers with
@@ -50,6 +51,7 @@ CFG = {
     "quit_after_s": 12 * 3600,  # paused this long: Dolphin quits
     "up_within_s": 15.0,        # /play: the Wii must be up by then...
     "switch_by_s": 22.0,        # ...and the TV switched by then, or /play gives up (launcher waits 30)
+    "in_use_s": 60.0,           # Screen Sharing counts as someone at the Mac if the pointer moved this recently
     "bar": "Mayflash",         # the Wii Remote bar, as uhubctl describes it
 }
 HOME = os.path.expanduser("~")
@@ -237,7 +239,44 @@ cg.CGDisplayBounds.restype, cg.CGDisplayBounds.argtypes = R, [ctypes.c_uint32]
 cg.CGWarpMouseCursorPosition.argtypes = [P]
 b = cg.CGDisplayBounds(cg.CGMainDisplayID())
 cg.CGWarpMouseCursorPosition(P(b.x + b.w - 1, b.y + b.h / 2))
+print(int(b.x + b.w - 1), int(b.y + b.h / 2))
 '''
+
+POINTER = '''
+import ctypes, ctypes.util
+class P(ctypes.Structure): _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+cg.CGEventCreate.restype, cg.CGEventCreate.argtypes = ctypes.c_void_p, [ctypes.c_void_p]
+cg.CGEventGetLocation.restype, cg.CGEventGetLocation.argtypes = P, [ctypes.c_void_p]
+p = cg.CGEventGetLocation(cg.CGEventCreate(None))
+print(int(p.x), int(p.y))
+'''
+
+_pointer = {"pos": None, "moved_at": 0.0}
+
+
+def _pointer_seen(out):
+    """Record where the pointer is, from a script's 'x y' output; returns the position."""
+    parts = out.split()
+    return (parts[0], parts[1]) if len(parts) >= 2 else None
+
+
+def pointer_moved(within):
+    """The pointer has moved in the last [within] seconds: someone is driving this Mac. The first
+    reading, and the listener's own parking, do not count as movement."""
+    pos = _pointer_seen(as_user("/usr/bin/python3", "-c", POINTER).stdout)
+    if pos is not None:
+        if _pointer["pos"] is not None and pos != _pointer["pos"]:
+            _pointer["moved_at"] = time.time()
+        _pointer["pos"] = pos
+    return time.time() - _pointer["moved_at"] < within
+
+
+def mac_in_use():
+    """Someone is using this Mac over Screen Sharing right now: a session is connected and its
+    pointer moved in the last minute. A session merely left open on a laptop does not count; it
+    did, at first, and the Wii never paused while Sal had Screen Sharing open (2026-11-14)."""
+    return screen_shared(max_age=15) and pointer_moved(CFG["in_use_s"])
 
 
 def park_cursor():
@@ -246,7 +285,9 @@ def park_cursor():
     the bottom edge it held the Dock open over the game (2026-11-14). Moving it this way is not
     mouse movement, so a Dock already up stays up; the Dock's own delay (README) is what keeps it
     down, and parking before the game shows keeps the pointer off the edges to begin with."""
-    as_user("/usr/bin/python3", "-c", PARK)
+    pos = _pointer_seen(as_user("/usr/bin/python3", "-c", PARK).stdout)
+    if pos is not None:
+        _pointer["pos"] = pos  # our own move, not someone at the Mac
 
 
 def console_user():
@@ -391,7 +432,7 @@ def tick():
         bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
         return
     if frozen(pid):
-        if screen_shared(max_age=15):
+        if mac_in_use():
             log("thawing: someone is using the Mac over Screen Sharing")
             resume(pid)
         elif now - s.get("paused_at", now) >= CFG["quit_after_s"]:
@@ -399,7 +440,7 @@ def tick():
         return
     away = now - s.get("last_mac", now)
     if (view == "away" and away >= CFG["away_s"]) or (view is None and away >= CFG["lost_s"]):
-        if screen_shared(max_age=15):
+        if mac_in_use():
             return  # someone is using the Mac over Screen Sharing: do not freeze Dolphin under them
         pause(pid)
 
