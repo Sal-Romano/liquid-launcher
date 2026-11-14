@@ -31,8 +31,9 @@ fun GlassLayer(
     val context = LocalContext.current
     val registry = GlassPanels.of(layer)
     val view = remember { GlassTextureView(context, registry) }
-    LaunchedEffect(current?.file) { view.setPhotoA(current?.image, current?.deep, current?.light) }
-    LaunchedEffect(next?.file) { view.setPhotoB(next?.image, next?.deep, next?.light) }
+    // Keyed on the frame, not its file: a kept test's file changes under a frame that stays up.
+    LaunchedEffect(current) { view.setPhotoA(current?.image, current?.deep, current?.light) }
+    LaunchedEffect(next) { view.setPhotoB(next?.image, next?.deep, next?.light) }
     LaunchedEffect(mix) { view.setMix(mix) }
     LaunchedEffect(zoom) { view.setZoom(zoom) }
     LaunchedEffect(dark) { view.setDark(dark) }

@@ -53,8 +53,11 @@ data class HookTile(
 ) : Tile
 
 @Serializable
-/** None: a tile that is only a picture (a logo in the dock); OK does nothing but tap. */
-enum class Action { AllApps, Settings, NextWallpaper, PauseSlideshow, None }
+/**
+ * None: a tile that is only a picture (a logo in the dock); OK does nothing but tap.
+ * Wallpapers: the photos on the TV and the QR code for sending one from a phone.
+ */
+enum class Action { AllApps, Settings, NextWallpaper, PauseSlideshow, None, Wallpapers }
 
 /** A launcher action rather than an app. */
 @Serializable
@@ -162,6 +165,15 @@ data class VolumeConfig(
     val soundbar: String? = null,
 )
 
+/**
+ * Photos from a phone: the launcher keeps a socket open to a relay (cloud/, a Cloudflare Worker)
+ * and the Wallpapers screen shows a QR code for it. [server] null: the build's own relay
+ * (BuildConfig.PHONE_SERVER); "" turns the phone link off; anything else is another relay's
+ * address, such as http://10.0.2.2:8787 for `wrangler dev` from the emulator.
+ */
+@Serializable
+data class PhoneConfig(val server: String? = null)
+
 @Serializable
 data class LauncherConfig(
     val schemaVersion: Int = 1,
@@ -174,6 +186,7 @@ data class LauncherConfig(
     val sound: SoundConfig = SoundConfig(),
     val volume: VolumeConfig = VolumeConfig(),
     val awake: AwakeConfig = AwakeConfig(),
+    val phone: PhoneConfig = PhoneConfig(),
     /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. A renamed app keeps the place its own name sorted it to. */
     val labels: Map<String, String> = emptyMap(),
 ) {

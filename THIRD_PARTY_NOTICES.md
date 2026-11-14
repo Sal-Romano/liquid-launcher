@@ -68,3 +68,29 @@ The Plex, Spotify, PlayStation and Wii glyphs in `res/drawable/brand_*.xml` come
 triangle is drawn here. The Claude icon (`res/drawable-nodpi/brand_claude.png`) is the Claude app icon
 from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Claude-ai-icon.svg). The marks themselves
 are trademarks of their owners and are used only to identify the corresponding apps on this launcher.
+
+## Libraries linked into the app
+
+- **OkHttp** (`com.squareup.okhttp3:okhttp`, the phone link's WebSocket and downloads), Copyright Square, Inc., under the Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+- **QR Code generator library** (`io.nayuki:qrcodegen`, the QR code on the Wallpapers screen), Copyright (c) Project Nayuki, under the MIT License:
+
+```
+Copyright (c) Project Nayuki. (MIT License)
+https://www.nayuki.io/page/qr-code-generator-library
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+- The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+- The Software is provided "as is", without warranty of any kind, express or
+  implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose and noninfringement. In no event shall the
+  authors or copyright holders be liable for any claim, damages or other
+  liability, whether in an action of contract, tort or otherwise, arising from,
+  out of or in connection with the Software or the use or other dealings in the
+  Software.
+```

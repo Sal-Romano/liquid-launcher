@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#070a11">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Liquid">
+<meta name="description" content="Send a photo to the TV.">
+<title>Liquid</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<div id="backdrop" aria-hidden="true"><div class="layer"></div><div class="layer"></div></div>
+
+<main id="app" data-view="loading">
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="mk-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3d6bff"/><stop offset="1" stop-color="#8a4dff"/></linearGradient>
+          <linearGradient id="mk-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient>
+        </defs>
+        <path d="M16 1.5c9.9 0 14.5 4.6 14.5 14.5S25.9 30.5 16 30.5 1.5 25.9 1.5 16 6.1 1.5 16 1.5z" fill="url(#mk-bg)"/>
+        <path d="M16 7.5c6.3 0 8.5 2.2 8.5 8.5s-2.2 8.5-8.5 8.5-8.5-2.2-8.5-8.5 2.2-8.5 8.5-8.5z" fill="url(#mk-glass)" stroke="#fff" stroke-opacity=".7" stroke-width=".8"/>
+      </svg>
+      <span>Liquid</span>
+    </div>
+    <div id="status" class="pill glass" role="status" data-kind="connecting" hidden>
+      <span class="dot" aria-hidden="true"></span><span id="status-text">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- Not paired with a TV yet, or the link stopped working. -->
+  <section id="pair" class="pair" hidden>
+    <div class="card glass">
+      <svg class="art" viewBox="0 0 200 120" aria-hidden="true">
+        <defs>
+          <linearGradient id="pa-screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b4fd8" stop-opacity=".55"/><stop offset="1" stop-color="#7b3fe4" stop-opacity=".35"/></linearGradient>
+          <linearGradient id="pa-phone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".08"/></linearGradient>
+        </defs>
+        <rect x="14" y="10" width="140" height="82" rx="10" fill="url(#pa-screen)" stroke="#fff" stroke-opacity=".55" stroke-width="1.5"/>
+        <path d="M70 104h28M84 92v12" stroke="#fff" stroke-opacity=".45" stroke-width="2" stroke-linecap="round"/>
+        <g fill="#fff" fill-opacity=".9">
+          <rect x="66" y="31" width="12" height="12" rx="2"/><rect x="90" y="31" width="12" height="12" rx="2"/><rect x="66" y="55" width="12" height="12" rx="2"/>
+          <rect x="82" y="47" width="4" height="4" rx="1"/><rect x="90" y="55" width="4" height="4" rx="1"/><rect x="98" y="47" width="4" height="4" rx="1"/>
+          <rect x="98" y="63" width="4" height="4" rx="1"/><rect x="82" y="63" width="4" height="4" rx="1"/><rect x="90" y="47" width="4" height="4" rx="1"/>
+        </g>
+        <g fill="none" stroke="#000" stroke-opacity=".35"><rect x="69" y="34" width="6" height="6" rx="1"/><rect x="93" y="34" width="6" height="6" rx="1"/><rect x="69" y="58" width="6" height="6" rx="1"/></g>
+        <rect x="140" y="44" width="44" height="74" rx="9" fill="url(#pa-phone)" stroke="#fff" stroke-opacity=".7" stroke-width="1.5"/>
+        <path d="M150 62v-6h6M174 62v-6h-6M150 84v6h6M174 84v6h-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <h1 id="pair-title">Scan the code on your TV</h1>
+      <p id="pair-text">On the TV, open Settings, then Wallpapers. Point your phone’s camera at the code there.</p>
+    </div>
+  </section>
+
+  <!-- Paired: frame a photo and send it. -->
+  <section id="compose" class="compose" hidden>
+    <div id="frame" class="frame glass">
+      <div id="screen" class="screen">
+        <canvas id="preview" aria-label="How the photo will look on the TV"></canvas>
+        <div id="chrome" class="tv" aria-hidden="true">
+          <div class="tv-clock"><div id="tv-date" class="tv-date"></div><div id="tv-time" class="tv-time"></div></div>
+          <div class="tv-dock"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <button id="pick-empty" class="empty" type="button">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="5" y="9" width="38" height="30" rx="7" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="16.5" cy="19.5" r="3.5" fill="currentColor"/><path d="M7 35l11-10 7 6 6-5 10 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg>
+          <span class="empty-title">Choose a photo</span>
+          <span class="empty-sub">It fills the whole TV</span>
+        </button>
+        <div id="meter" class="meter" data-level="none" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="meter-text"></span></div>
+        <div class="dropping">Drop it here</div>
+        <div class="landed" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      </div>
+    </div>
+
+    <div id="soft" class="soft" role="status" hidden>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="13.9" r="1.1" fill="currentColor"/></svg>
+      <span id="soft-text"></span>
+    </div>
+
+    <div id="tools" class="tools" hidden>
+      <div id="mode" class="seg glass" role="radiogroup" aria-label="Framing">
+        <button type="button" role="radio" aria-checked="true" data-mode="fill">Fill</button>
+        <button type="button" role="radio" aria-checked="false" data-mode="fit">Fit</button>
+      </div>
+      <button id="chrome-toggle" class="chip glass" type="button" aria-pressed="true">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 17h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 9h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="long">Clock &amp; dock</span><span class="short">Clock</span>
+      </button>
+      <button id="pick-again" class="chip glass" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="7.4" cy="8.4" r="1.5" fill="currentColor"/><path d="M3.5 14.5l4.5-4 3 2.6 2.5-2 3 2.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Change
+      </button>
+    </div>
+    <p id="hint" class="hint" hidden>Drag to frame it. Pinch to zoom, double-tap to reset.</p>
+
+    <section id="sent" class="sent" hidden>
+      <h2>Sent</h2>
+      <ol id="sent-list" class="glass"></ol>
+    </section>
+
+    <p class="as">Sending as <button id="rename" class="link" type="button">this phone</button></p>
+  </section>
+</main>
+
+<footer id="bar" class="bar" hidden>
+  <p id="note" class="note" aria-live="polite"></p>
+  <button id="pick-main" class="primary" type="button">
+    <span class="face">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3.4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8.6" cy="10" r="1.7" fill="currentColor"/><path d="M4.5 17l5-4.4 3.4 2.9 2.6-2.1 4 3.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      <span>Choose a photo</span>
+    </span>
+  </button>
+  <div id="actions" class="actions" hidden>
+    <button id="test" class="secondary glass" type="button" data-state="idle">
+      <span class="fill" aria-hidden="true"></span>
+      <span class="face">
+        <span class="ic ic-spin" aria-hidden="true"></span>
+        <svg class="ic ic-done" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="test-text">Test on TV</span>
+      </span>
+    </button>
+    <button id="use" class="primary" type="button" data-state="idle">
+      <span class="fill" aria-hidden="true"></span>
+      <span class="face">
+        <span class="ic ic-spin" aria-hidden="true"></span>
+        <svg class="ic ic-done" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span id="use-text">Use this</span>
+      </span>
+    </button>
+  </div>
+</footer>
+
+<input id="file" class="offscreen" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+</body>
+</html>

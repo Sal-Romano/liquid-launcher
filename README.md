@@ -25,6 +25,8 @@ Early. Everything below runs on an Android TV emulator; the first run on the TV 
 - Brand marks for Plex, Spotify, YouTube, PlayStation, Xbox and Wii, drawn like app icons so those tiles look right before the apps are installed, or in place of a stock icon that sits badly in the row (`icon` on an app, folder or action tile). A Claude mark for a tile that is only a picture (`action: None`).
 - All apps grid, settings sheet, and a frosted-only glass mode for when the GPU disagrees.
 - Drop to the TV: the launcher listens on port 8765 of the home network. Open `http://<tv-ip>:8765` on a laptop or phone and drag a PDF, an image or a link onto the page, or `curl -T file.pdf http://<tv-ip>:8765/`. PDFs and images open full screen on the TV (Left/Right page through a PDF, Back closes), links open in the TV's browser. The address is shown in Settings. No authentication: it trusts the LAN.
+- Wallpapers from your phone: Settings, then Wallpapers, shows a QR code. Scan it and frame a photo for the TV on the page that opens (fill or fit, the clock and dock drawn over the preview, and a sharpness chip that warns when the framing is too soft for the TV). **Test on TV** puts it up for a look without saving it (a new test replaces it; with nothing more the TV goes back to its photos after 10 minutes). **Use this** saves it, keeping the copy already on screen with no second upload; reframing afterwards turns it into **Update**, which replaces the saved version instead of adding a copy. The phone says when each step has reached the TV. The launcher keeps one WebSocket open to a relay, a Cloudflare Worker with one Durable Object per TV ([cloud/](cloud/README.md)), which pushes each photo the moment it arrives; a photo saved while the TV is off waits there and is collected when it is back, only the newest going up. New code on that screen makes a new QR code and locks out the old one.
+- The Wallpapers screen also lists every photo, newest first, the one on screen marked. OK on a photo opens its options with Back first: Show now, Select, Remove from the TV. Select (also top right) ticks photos with quick presses and deletes them together after a confirmation. Photos from a phone are saved next to the others in Pictures/Wallpapers as `phone-<time>-<draft>-<id>.jpg`. The launcher deletes the photos it saved; one pushed over adb needs All files access to be deleted (below), and is hidden instead without it.
 - Pre-rendered blurs cached on disk, about 30 KB per photo, rendered once in the background.
 
 ## Build and install
@@ -36,6 +38,8 @@ Needs JDK 17 and an Android SDK with platform 37 installed.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant dev.sal.glass android.permission.READ_EXTERNAL_STORAGE
 adb shell appops set dev.sal.glass READ_EXTERNAL_STORAGE allow
+# Optional: lets Remove on the Wallpapers screen delete photos that were pushed over adb.
+adb shell appops set --uid dev.sal.glass MANAGE_EXTERNAL_STORAGE allow
 adb push my-photo.jpg /sdcard/Pictures/Wallpapers/
 ```
 

@@ -201,6 +201,18 @@ fun AppIcons.glyph(context: Context, action: dev.sal.glass.config.Action): Image
             c.drawRoundRect(size * 0.56f, size * 0.26f, size * 0.56f + w, size * 0.74f, w / 3, w / 3, paint)
         }
         dev.sal.glass.config.Action.None -> Unit // a picture tile without a picture: blank
+        dev.sal.glass.config.Action.Wallpapers -> {
+            // A framed landscape, the photo frame's own mark: sun over two hills.
+            paint.style = Paint.Style.STROKE; paint.strokeWidth = size * 0.07f
+            c.drawRoundRect(size * 0.2f, size * 0.27f, size * 0.8f, size * 0.73f, size * 0.08f, size * 0.08f, paint)
+            val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = paint.color }
+            c.drawCircle(size * 0.39f, size * 0.42f, size * 0.055f, fill)
+            val hills = android.graphics.Path().apply {
+                moveTo(size * 0.27f, size * 0.66f); lineTo(size * 0.45f, size * 0.49f); lineTo(size * 0.55f, size * 0.58f)
+                lineTo(size * 0.62f, size * 0.52f); lineTo(size * 0.73f, size * 0.66f); close()
+            }
+            c.drawPath(hills, fill)
+        }
     }
     return bmp.asImageBitmap().also { AppIconsCache.put(key, it) }
 }

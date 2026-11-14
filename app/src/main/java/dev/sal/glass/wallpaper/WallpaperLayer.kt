@@ -45,7 +45,9 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
     // Ken Burns at 4 fps, not 60: a 6 % zoom over a minute moves about a pixel every half second,
     // so stepping every 250 ms looks identical and leaves the GPU idle between steps (the TV would
     // otherwise redraw a full 1080p frame 60 times a second for the whole minute).
-    LaunchedEffect(current?.file, kenBurns, engine.intervalMs) {
+    // Keyed on the frame, not its file: a kept test's file changes under a frame that stays up,
+    // and the slow zoom must not jump back for it.
+    LaunchedEffect(current, kenBurns, engine.intervalMs) {
         zoom.snapTo(1f)
         engine.zoom = 1f
         if (!kenBurns) return@LaunchedEffect

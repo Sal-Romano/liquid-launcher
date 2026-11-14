@@ -58,6 +58,26 @@ class BlurCache(context: Context) {
         done
     }
 
+    /** Renders [file]'s blurs now if they are missing: a photo that joined the rotation without going up. */
+    suspend fun warm(file: File) = withContext(Dispatchers.IO) {
+        if (isCached(file)) return@withContext
+        val image = Wallpapers.load(file) ?: return@withContext
+        blursFor(file, image)
+        image.recycle()
+    }
+
+    /** Hands [from]'s blurs to [to], a copy of it under another name (a kept test), so they are not rendered again. */
+    fun move(from: File, to: File) {
+        deepFile(from).renameTo(deepFile(to))
+        frostFile(from).renameTo(frostFile(to))
+    }
+
+    /** Drops [file]'s blurs. Call before the file itself goes: the key needs its size and time. */
+    fun forget(file: File) {
+        deepFile(file).delete()
+        frostFile(file).delete()
+    }
+
     private fun store(target: File, bmp: Bitmap) {
         val tmp = File(target.path + ".tmp")
         tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }

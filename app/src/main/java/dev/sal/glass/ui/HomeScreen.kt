@@ -47,6 +47,8 @@ import dev.sal.glass.config.VolumeConfig
 import dev.sal.glass.config.Tile
 import dev.sal.glass.data.Apps
 import dev.sal.glass.drop.Drop
+import dev.sal.glass.phone.Phone
+import dev.sal.glass.phone.PhoneLink
 import dev.sal.glass.ui.clock.Clock
 import dev.sal.glass.ui.overlay.DropViewer
 import dev.sal.glass.ui.dock.AppIcons
@@ -65,6 +67,7 @@ import dev.sal.glass.ui.overlay.ContextMenu
 import dev.sal.glass.ui.overlay.SettingRow
 import dev.sal.glass.ui.overlay.SettingsSheet
 import dev.sal.glass.ui.overlay.Toast
+import dev.sal.glass.ui.overlay.WallpapersScreen
 import dev.sal.glass.wallpaper.WallpaperEngine
 import dev.sal.glass.wallpaper.WallpaperLayer
 import kotlinx.coroutines.delay
@@ -73,14 +76,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
 
-private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop }
+private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop, Wallpapers }
 
 /**
  * Photo → clock → dock → overlays. One key router at the root: in the idle state any key only
  * wakes the dock; Back hides the dock and never leaves the launcher; Menu opens settings.
  */
 @Composable
-fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
+fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wakeSignal: Long) {
     val context = LocalContext.current
     val config = store.config
     var dockVisible by remember { mutableStateOf(true) }
@@ -139,6 +142,8 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
 
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }
+    // The phone link follows launcher.json's relay, or the build's own.
+    LaunchedEffect(config.phone.server) { phone.start(config.phone.server ?: BuildConfig.PHONE_SERVER) }
     LaunchedEffect(wakeSignal) { engine.rescan(); AppIcons.forgetInstalled(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
     // Idle timer: the dock fades after idleHideSec without a key press, overlays excepted.
     LaunchedEffect(lastKeyAt, overlay, config.dock.idleHideSec) {
@@ -148,6 +153,15 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
 
     fun wake() { lastKeyAt = System.currentTimeMillis(); dockVisible = true }
+
+    // News from the phone link ("Test from iPhone · not saved"). A photo on its way up also gets
+    // Settings or the Wallpapers screen (where the QR code was scanned) out of the way, so the
+    // crossfade is seen.
+    LaunchedEffect(Phone.notices) {
+        if (Phone.notices == 0L) return@LaunchedEffect
+        toast = Phone.notice
+        if (Phone.noticeClearsScreen && (overlay == Overlay.Settings || overlay == Overlay.Wallpapers)) overlay = Overlay.None
+    }
 
     // Something was dropped on the TV: a link goes to the browser, anything else to the viewer.
     LaunchedEffect(Drop.serial) {
@@ -181,6 +195,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 Action.NextWallpaper -> engine.skip()
                 Action.PauseSlideshow -> { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed" }
                 Action.None -> Unit
+                Action.Wallpapers -> overlay = Overlay.Wallpapers
             }
             is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
             is HookTile -> {
@@ -233,7 +248,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             // All apps is a screen of its own: the clock and the dock leave while it is up, so the
             // grid sits on the photo alone instead of over the home chrome.
-            val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop
+            val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop && overlay != Overlay.Wallpapers
             val clockAlpha by animateFloatAsState(if (chrome) 1f else 0f, tween(220), label = "clockAlpha")
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
@@ -271,6 +286,24 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             AllApps(overlay == Overlay.AllApps, apps, onLaunch = { app ->
                 Sounds.tap(); runCatching { context.startActivity(app.launchIntent) }; overlay = Overlay.None
             }, onDismiss = { overlay = Overlay.None })
+            WallpapersScreen(
+                visible = overlay == Overlay.Wallpapers,
+                photos = engine.library,
+                current = engine.current?.file,
+                thumbs = engine.thumbs,
+                interval = if (engine.paused) "paused" else "every ${intervalLabel(config.wallpaper.intervalSec)}",
+                onShow = { file -> overlay = Overlay.None; scope.launch { if (!engine.showNow(file)) toast = "Could not open that photo" } },
+                onRemove = { files ->
+                    val hidden = files.count { !engine.remove(it) }
+                    toast = when {
+                        hidden > 0 -> "Hidden: the TV would not let the launcher delete ${if (hidden == 1) "it" else "$hidden of them"}"
+                        files.size > 1 -> "Deleted ${files.size} photos"
+                        else -> null
+                    }
+                },
+                onNewLink = { phone.newLink(); toast = "New code: phones need to scan it again" },
+                onDismiss = { overlay = Overlay.None },
+            )
             ContextMenu(
                 overlay == Overlay.Context, contextTile?.label ?: "",
                 onMoveLeft = { contextTile?.let { store.move(it.id, -1) } },
@@ -279,9 +312,9 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 onFirst = { contextTile?.let { store.moveToFront(it.id) } },
                 onDismiss = { overlay = Overlay.None },
             )
-            SettingsSheet(overlay == Overlay.Settings, settingsRows(store, engine), BuildConfig.VERSION_NAME) { overlay = Overlay.None }
+            SettingsSheet(overlay == Overlay.Settings, settingsRows(store, engine) { overlay = Overlay.Wallpapers }, BuildConfig.VERSION_NAME) { overlay = Overlay.None }
             DropViewer(Drop.incoming, Drop.serial, overlay == Overlay.Drop) { overlay = Overlay.None }
-            Toast(toast ?: pending, sticky = toast == null && pending != null) { toast = null }
+            Toast(toast ?: pending, sticky = toast == null && pending != null, solid = !chrome) { toast = null }
         }
     }
 }
@@ -299,10 +332,14 @@ private fun dockLuma(thumb: android.graphics.Bitmap): Float {
 private val volumeLevels = listOf(0, 10, 20, 25, 50)
 private val awakeMinutes = listOf(0, 60, 180, 360, -1)
 
-private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {
+private fun intervalLabel(sec: Int) = if (sec < 60) "$sec s" else "${sec / 60} min"
+
+private fun settingsRows(store: ConfigStore, engine: WallpaperEngine, onWallpapers: () -> Unit): List<SettingRow> {
     val intervals = listOf(30, 60, 120, 300, 900)
     val idle = listOf(5, 10, 20, 0)
     return listOf(
+        // The photos on the TV, and the QR code for sending one from a phone.
+        SettingRow("Wallpapers", listOf("Photos & phone"), { 0 }, { onWallpapers() }),
         SettingRow("Wallpaper interval", listOf("30 s", "1 min", "2 min", "5 min", "15 min"),
             { intervals.indexOf(store.config.wallpaper.intervalSec).coerceAtLeast(0) },
             { i -> store.update { c -> c.copy(wallpaper = c.wallpaper.copy(intervalSec = intervals[i])) } }),

@@ -1,0 +1,18 @@
+{
+  // The phone's page and the relay to the TV. See README.md.
+  "name": "liquid",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    // The page is static; only /api/* runs the Worker.
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "TV", "class_name": "Tv" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Tv"] }],
+  "observability": { "enabled": true },
+  "preview_urls": false
+}

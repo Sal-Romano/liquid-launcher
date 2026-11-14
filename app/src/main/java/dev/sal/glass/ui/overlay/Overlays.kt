@@ -11,6 +11,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,9 +41,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -154,13 +160,49 @@ fun ContextMenu(
     }
 }
 
+/**
+ * A small menu in the middle of the screen, one row per action; OK runs one and closes the menu,
+ * Back closes it. Focus stays inside while it is up. It is drawn in Compose, not GL glass: it opens
+ * over a full-screen overlay (the Wallpapers grid), whose opaque photos would hide the GL layer.
+ */
 @Composable
-private fun MenuRow(name: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ActionMenu(visible: Boolean, title: String, actions: List<Pair<String, () -> Unit>>, onDismiss: () -> Unit) {
+    val first = remember { FocusRequester() }
+    LaunchedEffect(visible) { if (visible) { delay(50); runCatching { first.requestFocus() } } }
+    AnimatedVisibility(visible, enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)).dismissOnBack(onDismiss), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.width(280.dp)
+                    .shadow(24.dp, SheetShape)
+                    .background(Color(0xF01A1E26), SheetShape)
+                    .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.06f))), SheetShape)
+                    .padding(8.dp)
+                    .focusProperties { onExit = { cancelFocusChange() } }
+                    .focusGroup(),
+            ) {
+                Text(title, Modifier.padding(12.dp, 8.dp), color = Color.White.copy(alpha = 0.7f), style = Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                actions.forEachIndexed { i, (name, action) ->
+                    MenuRow(name, if (i == 0) Modifier.focusRequester(first) else Modifier, solid = true) { action(); onDismiss() }
+                }
+            }
+        }
+    }
+}
+
+/** [solid]: the focused row is lit in Compose instead of with a GL glass pill (see [ActionMenu]). */
+@Composable
+private fun MenuRow(name: String, modifier: Modifier = Modifier, solid: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier
             .fillMaxWidth().height(40.dp)
-            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
+            .then(
+                when {
+                    !focused -> Modifier
+                    solid -> Modifier.background(Color.White.copy(alpha = 0.16f), PillShape).border(1.dp, Color.White.copy(alpha = 0.3f), PillShape)
+                    else -> Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay)
+                },
+            )
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
             .focusable()
             .tileClicks({ Sounds.tap(); onClick() }, {})
@@ -184,47 +226,59 @@ fun SettingsSheet(visible: Boolean, rows: List<SettingRow>, version: String, onD
     ) {
         Box(Modifier.fillMaxSize().dismissOnBack(onDismiss), contentAlignment = Alignment.CenterEnd) {
             Column(
-                Modifier.padding(end = 32.dp).width(380.dp).glass(SheetShape, GlassVariant.Sheet, layer = GlassLayerId.Overlay).padding(20.dp, 16.dp).focusGroup(),
+                Modifier.padding(end = 32.dp, top = 24.dp, bottom = 24.dp).width(380.dp).glass(SheetShape, GlassVariant.Sheet, layer = GlassLayerId.Overlay).padding(20.dp, 16.dp).focusGroup(),
             ) {
                 Text("Settings", Modifier.padding(bottom = 12.dp), color = Color.White, style = Title)
-                rows.forEachIndexed { i, row ->
-                    var focused by remember { mutableStateOf(false) }
-                    Row(
-                        Modifier
-                            .fillMaxWidth().height(48.dp)
-                            .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
-                            .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
-                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
-                            .focusable()
-                            .onKeyEvent { e ->
-                                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                                when (e.key) {
-                                    Key.DirectionLeft -> { row.set((row.index() - 1 + row.values.size) % row.values.size); Sounds.tick(); true }
-                                    Key.DirectionRight, Key.DirectionCenter, Key.Enter -> { row.set((row.index() + 1) % row.values.size); Sounds.tick(); true }
-                                    else -> false
+                // More rows than fit on the screen: they scroll, and focus brings the one it lands on into view.
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    rows.forEachIndexed { i, row ->
+                        var focused by remember { mutableStateOf(false) }
+                        Row(
+                            Modifier
+                                .fillMaxWidth().height(48.dp)
+                                .then(if (i == 0) Modifier.focusRequester(first) else Modifier)
+                                .then(if (focused) Modifier.glass(PillShape, GlassVariant.Pill, focused = true, layer = GlassLayerId.Overlay) else Modifier)
+                                .onFocusChanged { focused = it.isFocused; if (it.isFocused) Sounds.tick() }
+                                .focusable()
+                                .onKeyEvent { e ->
+                                    if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                                    when (e.key) {
+                                        Key.DirectionLeft -> { row.set((row.index() - 1 + row.values.size) % row.values.size); Sounds.tick(); true }
+                                        Key.DirectionRight, Key.DirectionCenter, Key.Enter -> { row.set((row.index() + 1) % row.values.size); Sounds.tick(); true }
+                                        else -> false
+                                    }
                                 }
-                            }
-                            .padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(row.name, Modifier.weight(1f), color = Color.White, style = Label)
-                        Text(row.values[row.index()], color = Color.White.copy(alpha = 0.85f), style = Label)
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(row.name, Modifier.weight(1f), color = Color.White, style = Label)
+                            Text(row.values[row.index()], color = Color.White.copy(alpha = 0.85f), style = Label)
+                        }
                     }
+                    Text("Glass $version", Modifier.padding(14.dp, 12.dp, 0.dp, 0.dp), color = Color.White.copy(alpha = 0.5f), style = Label)
                 }
-                Text("Glass $version", Modifier.padding(14.dp, 12.dp, 0.dp, 0.dp), color = Color.White.copy(alpha = 0.5f), style = Label)
             }
         }
     }
 }
 
-/** Top-centre pill that fades after 2.5 s, or stays while [sticky]: something still under way. */
+/**
+ * Top-centre pill that fades after 2.5 s, or stays while [sticky]: something still under way.
+ * [solid]: drawn in Compose instead of GL glass, for when a full-screen overlay is up, whose
+ * content would otherwise show through the glass beneath it.
+ */
 @Composable
-fun Toast(message: String?, sticky: Boolean = false, onDone: () -> Unit) {
+fun Toast(message: String?, sticky: Boolean = false, solid: Boolean = false, onDone: () -> Unit) {
     LaunchedEffect(message, sticky) { if (message != null && !sticky) { delay(2500); onDone() } }
     AnimatedVisibility(message != null, enter = fadeIn(tween(160)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Box(
-                Modifier.padding(top = 32.dp).height(36.dp).glass(PillShape, GlassVariant.Pill, layer = GlassLayerId.Overlay).padding(horizontal = 16.dp),
+                Modifier.padding(top = 32.dp).height(36.dp)
+                    .then(
+                        if (solid) Modifier.shadow(12.dp, PillShape).background(Color(0xF01A1E26), PillShape).border(1.dp, Color.White.copy(alpha = 0.2f), PillShape)
+                        else Modifier.glass(PillShape, GlassVariant.Pill, layer = GlassLayerId.Overlay),
+                    )
+                    .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) { Text(message ?: "", color = Color.White, style = Label, maxLines = 1) }
         }

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b6cff"/>
+      <stop offset=".55" stop-color="#6a4dff"/>
+      <stop offset="1" stop-color="#b14dff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".3" cy=".2" r=".9">
+      <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
+      <stop offset=".6" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="slab" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".7"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".16"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#fff" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".55"/>
+    </linearGradient>
+  </defs>
+  <!-- a continuous-corner square, the launcher's tile shape -->
+  <path d="M32 2c21 0 30 9 30 30s-9 30-30 30S2 53 2 32 11 2 32 2z" fill="url(#bg)"/>
+  <path d="M32 2c21 0 30 9 30 30s-9 30-30 30S2 53 2 32 11 2 32 2z" fill="url(#glow)"/>
+  <!-- the glass slab -->
+  <path d="M32 15c13 0 17 4 17 17s-4 17-17 17-17-4-17-17 4-17 17-17z" fill="url(#slab)" stroke="url(#rim)" stroke-width="1.6"/>
+  <path d="M22 22c3-3 7-4.2 12-4.2" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="2.2" stroke-linecap="round"/>
+</svg>

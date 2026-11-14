@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -8,12 +9,19 @@
          adb shell pm grant dev.sal.glass android.permission.READ_EXTERNAL_STORAGE -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Removing a wallpaper that was pushed over adb from the Wallpapers screen: the launcher may
+         only delete its own files (photos from a phone) without it. Never asked for on screen;
+         granted over adb: adb shell appops set dev.sal.glass MANAGE_EXTERNAL_STORAGE allow
+         Without it such a photo is hidden instead of deleted. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <!-- A launcher must see every launchable app (package visibility filtering, API 30+). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <!-- The network indicator in the top right (both are normal permissions, granted at install). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- The drop endpoint: a small HTTP server on the home network that receives files to show. -->
+    <!-- The drop endpoint: a small HTTP server on the home network that receives files to show;
+         and the phone link, a WebSocket to the relay in cloud/ that delivers wallpapers. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application

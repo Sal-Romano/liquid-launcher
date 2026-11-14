@@ -30,6 +30,9 @@ android {
         versionName = "0.8"
         // No abiFilters: the app ships no native code, so one APK serves the TV (32-bit
         // armeabi-v7a only) and the arm64 emulator alike. A filter here blocked the emulator.
+        // The relay phones send wallpapers through (cloud/), unless launcher.json names another
+        // (phone.server). Set phoneServer in gradle.properties; empty leaves the phone link off.
+        buildConfigField("String", "PHONE_SERVER", "\"${providers.gradleProperty("phoneServer").getOrElse("")}\"")
     }
 
     buildFeatures {
@@ -62,4 +65,6 @@ dependencies {
     implementation(libs.androidx.tv.material)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.graphics.shapes)
+    implementation(libs.okhttp)
+    implementation(libs.qrcodegen)
 }
