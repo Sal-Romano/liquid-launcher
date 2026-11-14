@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>dev.sal.wii</string>
+  <key>ProgramArguments</key><array><string>/usr/bin/python3</string><string>/Users/sal/Library/Application Support/wii/wii.py</string></array>
+  <key>EnvironmentVariables</key><dict><key>HOME</key><string>/Users/sal</string><key>WII_USER</key><string>sal</string><key>WII_UID</key><string>502</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/sal/Library/Logs/wii.log</string>
+  <key>StandardErrorPath</key><string>/Users/sal/Library/Logs/wii.log</string>
+</dict></plist>

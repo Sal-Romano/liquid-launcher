@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import dev.sal.glass.config.ActionTile
 import dev.sal.glass.config.AppTile
 import dev.sal.glass.config.FolderTile
+import dev.sal.glass.config.HookTile
 import dev.sal.glass.config.HaEntityTile
 import dev.sal.glass.config.IntentTile
 import dev.sal.glass.config.Tile
@@ -68,6 +69,7 @@ fun Dock(
                     is IntentTile -> "Shortcut"
                     is HaEntityTile -> tile.entityId
                     is FolderTile -> "Folder"
+                    is HookTile -> "Hook"
                 }
                 Tile(
                     label = label,

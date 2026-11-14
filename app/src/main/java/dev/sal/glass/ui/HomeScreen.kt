@@ -37,6 +37,7 @@ import dev.sal.glass.config.AppTile
 import dev.sal.glass.config.ClockSize
 import dev.sal.glass.config.ConfigStore
 import dev.sal.glass.config.FolderTile
+import dev.sal.glass.config.HookTile
 import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
@@ -67,6 +68,10 @@ import dev.sal.glass.ui.overlay.Toast
 import dev.sal.glass.wallpaper.WallpaperEngine
 import dev.sal.glass.wallpaper.WallpaperLayer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
 
 private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop }
 
@@ -102,6 +107,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
             .map { app -> config.labels[app.packageName]?.let { app.copy(label = it) } ?: app }
     }
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { Sounds.init(context) }
     // A photo frame is not inactivity: hold the screen on while we are in front, for as long as
     // configured since the last key. Fire TV's own timeout (21 min on the Hisense) resumes after.
@@ -174,6 +180,23 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 Action.None -> Unit
             }
             is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
+            is HookTile -> {
+                // The other end answers when it is done (Dolphin up, TV switched), so this can take a while.
+                toast = "Starting ${tile.label ?: "that"}…"
+                scope.launch(Dispatchers.IO) {
+                    val result = runCatching {
+                        val c = java.net.URL(tile.url).openConnection(java.net.Proxy.NO_PROXY) as java.net.HttpURLConnection
+                        try { c.connectTimeout = 3000; c.readTimeout = 30000; c.responseCode } finally { c.disconnect() }
+                    }
+                    withContext(Dispatchers.Main) {
+                        toast = when (val code = result.getOrNull()) {
+                            in 200..299 -> null
+                            null -> "Could not reach ${tile.label ?: tile.url}"
+                            else -> "${tile.label ?: "Hook"} said no ($code)"
+                        }
+                    }
+                }
+            }
             else -> toast = "Coming soon"
         }
     }

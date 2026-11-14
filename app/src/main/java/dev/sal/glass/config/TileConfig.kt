@@ -38,6 +38,20 @@ data class IntentTile(
     val requirePackage: String? = null,
 ) : Tile
 
+/**
+ * Ask another machine on the network to do something: a GET to [url], which answers when it is done.
+ * The Wii tile is one: the Mac mini opens Dolphin, waits for it, and switches the TV to its input.
+ */
+@Serializable
+@SerialName("hook")
+data class HookTile(
+    override val id: String,
+    val url: String,
+    override val label: String? = null,
+    /** A bundled brand mark to draw. */
+    val icon: String? = null,
+) : Tile
+
 @Serializable
 /** None: a tile that is only a picture (a logo in the dock); OK does nothing but tap. */
 enum class Action { AllApps, Settings, NextWallpaper, PauseSlideshow, None }
