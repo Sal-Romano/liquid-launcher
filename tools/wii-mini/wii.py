@@ -52,6 +52,10 @@ CFG = {
     "boot": ["-b", "-C", "Dolphin.Display.Fullscreen=True", "-C", "Dolphin.Interface.CursorVisibility=0",
              "-C", "Dolphin.Interface.PauseOnFocusLost=True", "-n", "0000000100000002"],
     "bundle": "org.dolphin-emu.dolphin",
+    # wii-channels (Sal-Romano/wii-channels) owns how Dolphin starts when it is installed: not in
+    # batch mode, so its channels can switch games, and with the settings both sides need.
+    "wiichan": os.path.join(os.path.expanduser("~"), "wii-channels/wiichan.py"),
+    "selfpause_cpu": 0.15,    # a paused Dolphin still using more than this of a core did not pause
     "poll_s": 2.0,
     "away_s": 4.0,             # the TV shows something else this long: the Wii pauses
     "lost_s": 120.0,           # the TV does not answer this long (switched off): the Wii pauses
@@ -214,6 +218,19 @@ def ps(pid, field):
     return sh("ps", "-o", field + "=", "-p", str(pid)).stdout.strip()
 
 
+def cputime(pid):
+    """CPU seconds the process has used so far (ps time: [[dd-]hh:]mm:ss.ss)."""
+    text = ps(pid, "time")
+    days, _, rest = text.rpartition("-")
+    total = 0.0
+    try:
+        for part in rest.split(":"):
+            total = total * 60 + float(part)
+        return total + (int(days) * 86400 if days else 0)
+    except ValueError:
+        return 0.0
+
+
 def frozen(pid):
     return "T" in ps(pid, "stat")
 
@@ -311,6 +328,8 @@ def pause(pid):
         as_user("open", "-a", "Finder")
     s = state()
     s.setdefault("paused_at", time.time())
+    # Checked a few seconds on: a Dolphin started without PauseOnFocusLost keeps running.
+    s["cpu0"], s["cpu_at"], s["checked"] = cputime(pid), time.time(), False
     save(s)
     log("paused", pid)
 
@@ -322,14 +341,15 @@ def resume(pid):
     as_user("open", "-a", CFG["app"])
     bar(True)
     s = state()
-    s.pop("paused_at", None)
+    for k in ("paused_at", "cpu0", "cpu_at", "checked"):
+        s.pop(k, None)
     save(s)
     log("resumed", pid)
 
 
 def end_session():
     s = state()
-    for k in ("session", "paused_at", "last_mac"):
+    for k in ("session", "paused_at", "last_mac", "pid", "cpu0", "cpu_at", "checked"):
         s.pop(k, None)
     save(s)
     bar(False)
@@ -381,7 +401,10 @@ def _play(t0, up_by, switch_by):
     pid = dolphin()
     started = pid is None
     if started:
-        as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
+        if os.path.exists(CFG["wiichan"]):
+            as_user("/usr/bin/python3", CFG["wiichan"], "start-dolphin")
+        else:
+            as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
         while dolphin() is None and time.time() < up_by:
             time.sleep(0.2)
         pid = dolphin()
@@ -424,10 +447,16 @@ def tick():
         else:
             bar(False)  # nothing to play: the remotes off, the mantle dark
         return
-    if frozen(pid):
-        os.kill(pid, signal.SIGCONT)  # frozen by an older version of this listener; never again
-    view = tv_view()
     now = time.time()
+    if s.get("pid") != pid:
+        # A Dolphin not seen before: wii-channels starts one at login. Started while nobody is at
+        # the Mac, it is a Wii for the TV and pauses when the TV is elsewhere; one opened by
+        # someone at the Mac is theirs.
+        s["pid"] = pid
+        if not s.get("session") and not mac_in_use():
+            s["session"], s["last_mac"] = True, now
+        save(s)
+    view = tv_view()
     if view == "mac":
         s["session"], s["last_mac"] = True, now  # also when the TV's own input menu got here
         save(s)
@@ -441,11 +470,28 @@ def tick():
         return
     if s.get("paused_at"):
         if mac_in_use():
-            return  # someone at the Mac: clicking Dolphin wakes it, as Dolphin does
+            if frozen(pid):  # the fallback below: never leave it frozen under someone
+                os.kill(pid, signal.SIGCONT)
+                s["checked"] = False
+                save(s)
+                log("thawed for someone at the Mac", pid)
+            return  # clicking Dolphin wakes it, as Dolphin does
         if dolphin_front():
             pause(pid)  # woken over Screen Sharing, then left alone: pause it again
         elif now - s["paused_at"] >= CFG["quit_after_s"]:
             stop(pid)
+        elif "cpu_at" not in s:
+            s["cpu0"], s["cpu_at"], s["checked"] = cputime(pid), now, False  # paused before this
+            save(s)                                                          # check existed
+        elif not s.get("checked") and not frozen(pid) and now - s["cpu_at"] >= 4:
+            rate = (cputime(pid) - s.get("cpu0", 0.0)) / max(1.0, now - s["cpu_at"])
+            s["checked"] = True
+            save(s)
+            if rate > CFG["selfpause_cpu"]:
+                # Started without PauseOnFocusLost, so it did not pause: freeze it instead (it
+                # shows a spinning wheel if pointed at, which is why this is only a fallback).
+                os.kill(pid, signal.SIGSTOP)
+                log("did not pause itself (%.0f%% CPU): frozen" % (rate * 100), pid)
         return
     away = now - s.get("last_mac", now)
     if (view == "away" and away >= CFG["away_s"]) or (view is None and away >= CFG["lost_s"]):

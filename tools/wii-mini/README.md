@@ -40,7 +40,17 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   front ports can). Any hub on [uhubctl's list](https://github.com/mvp/uhubctl#compatible-usb-hubs)
   works, for example Satechi's Mac Mini Hub (M1/M2): plug it in, plug the bar into it, and the
   daemon finds the bar by name (`uhubctl -s Mayflash`). Until then the bar simply stays on.
-- Dolphin opened on the Mac itself, not through the tile or the TV, is left alone.
+- **With wii-channels** ([Sal-Romano/wii-channels](https://github.com/Sal-Romano/wii-channels),
+  game channels in the Wii Menu, deployed to `~/wii-channels`): a cold start goes through
+  `wiichan.py start-dolphin`, which starts Dolphin out of batch mode (channels switch games by
+  sending Dolphin an open-document event, and batch mode would quit instead) with
+  `PauseOnFocusLost` among its settings. Its service starts a Dolphin at login; any Dolphin that
+  appears while nobody is at the Mac is treated as a Wii for the TV and paused when the TV is
+  elsewhere.
+- **Fallback for a Dolphin that does not pause itself** (started without `PauseOnFocusLost`):
+  if it still uses more than 15 % of a core a few seconds after being paused, it is frozen with
+  SIGSTOP, and thawed when the TV comes back or someone at the Mac moves the pointer.
+- Dolphin opened by someone at the Mac (Screen Sharing, a keyboard) is left alone.
 - **No mouse pointer on the TV.** Every open or resume parks the pointer at the middle of the
   right edge (CGWarpMouseCursorPosition), where no Dock, menu bar or hot corner opens and the
   arrow is drawn almost off screen; left at the bottom edge it held the Dock open over the game.
