@@ -1,15 +1,48 @@
 # wii-mini: the Mac mini's end of the Wii tile
 
 The Wii tile in the launcher is a hook: `GET http://<mac-mini>:8766/play`. On the Mac mini under
-the TV, `wii.py` answers it: opens Dolphin, waits for it, then switches the TV to the Mac's HDMI
-input by injecting `KEYCODE_TV_INPUT_HDMI_2` (244) over the TV's network adb. `/home` sends the TV
-back to the launcher, `/quit` stops Dolphin and goes home, `/status` says what is running.
+the TV, `wii.py` makes the Wii behave like an app on the TV:
+
+- **Opening** (`/play`): a paused Wii thaws; otherwise Dolphin boots straight into the Wii Menu,
+  fullscreen, with no Dolphin window (`-b -C Dolphin.Display.Fullscreen=True -n
+  0000000100000002`). The display wakes, and the TV switches to the Mac's HDMI input by
+  injecting `KEYCODE_TV_INPUT_HDMI_2` (244) over the TV's network adb, while the Wii Menu loads.
+  About 4 s from a cold start, 1-2 s to resume.
+- **Leaving pauses it.** While Dolphin runs, a watcher asks the TV every 2 s what it shows
+  (`dumpsys power`, `window` and `tv_input`; HDMI 2 is the session `HdmiInputService/HW3`).
+  After 4 s on anything else (Home, another app or input, the TV asleep), or 2 min with the TV
+  not answering (switched off), Dolphin is frozen with SIGSTOP. When the TV shows the Mac again,
+  by the tile or by the TV's own input menu, it gets SIGCONT. Measured: paused 3-5 s after Home,
+  resumed 5 s after switching back by the input menu.
+- **After two hours paused it quits** (SIGCONT, then SIGTERM, which Dolphin honours cleanly;
+  SIGKILL after 10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
+  If Dolphin closes while the TV shows it (Wii Menu, power off), the TV goes back to the launcher.
+- **The Wii Remote bar** (a Mayflash DolphinBar) gets power only while Dolphin runs unpaused, so
+  the Wii Remotes switch off on every pause (press a button to reconnect) and the bar's glow
+  goes dark. That needs a USB hub with per-port power switching between the Mac and the bar:
+  the M2 Mac mini's own ports cannot switch power (uhubctl finds nothing there; only the M4's
+  front ports can). Any hub on [uhubctl's list](https://github.com/mvp/uhubctl#compatible-usb-hubs)
+  works, for example Satechi's Mac Mini Hub (M1/M2): plug it in, plug the bar into it, and the
+  daemon finds the bar by name (`uhubctl -s Mayflash`). Until then the bar simply stays on.
+- Dolphin opened on the Mac itself, not through the tile or the TV, is left alone.
+
+`/home` sends the TV back to the launcher, `/quit` quits Dolphin and goes home, `/status` reports
+(running, paused, session, what the TV shows, the bar). State lives in `state.json` next to
+`wii.py`, so a pause and its two-hour clock survive a restart of the daemon.
 
 Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
 
 - Dolphin 2609b in /Applications (from dl.dolphin-emu.org, checksum from Homebrew's cask metadata).
   Config written before first run: fullscreen, no stop confirmation, continuous Wii Remote
-  scanning, analytics declined, Wiimote 1 = real remote over the Mac's Bluetooth.
+  scanning, analytics declined, Wiimote 1 = real remote. The Wii System Menu was installed from
+  Dolphin's online system update (Tools menu), 2026-11-14.
+- uhubctl (master) built against a static libusb 1.0.30 (macOS 26 needs 1.0.30 or later) into
+  ~/Library/Application Support/wii/uhubctl. To rebuild: libusb's release tarball with
+  `./configure --disable-shared --enable-static`, then `cc uhubctl.c libusb-1.0.a -framework
+  IOKit -framework CoreFoundation -framework Security -lobjc`, in a path without spaces.
+- macOS does not reopen apps at login (`defaults -currentHost write com.apple.loginwindow
+  TALLogoutSavesState -bool false`), so a reboot does not leave a Dolphin window waiting; one that
+  is there anyway and idle gets replaced by the Wii Menu on the next `/play`.
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
 - Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,

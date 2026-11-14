@@ -1,93 +1,384 @@
 #!/usr/bin/env python3
 """
-wii: the Mac mini's end of the launcher's Wii tile.
+wii: the Mac mini's end of the launcher's Wii tile. Runs as a root launch daemon (README.md).
 
-A tiny HTTP service on the home network. GET /play opens Dolphin, waits until it is running, then
-switches the TV to this Mac's HDMI input over adb (the TV's debug port, with a key the TV already
-trusts). GET /home sends the TV back to its launcher. GET /quit stops Dolphin and goes home.
-GET /status says what is running. LAN only, no authentication: it trusts the house.
+The Wii behaves like an app on the TV:
+
+- /play opens it. A paused Wii thaws; otherwise Dolphin boots straight into the Wii Menu,
+  fullscreen, with no Dolphin window in the way. The display wakes and the TV switches to this
+  Mac's input while the Wii Menu loads.
+- Leaving pauses it. While Dolphin runs, a watcher asks the TV every 2 s what it is showing.
+  When it has shown something else for a few seconds (Home, another app or input, the TV
+  asleep), Dolphin is frozen exactly where it was. When the TV shows this Mac again, however it
+  got there, Dolphin thaws.
+- After two hours paused, Dolphin quits. Anything not saved in the game is lost, as when a
+  real Wii is switched off.
+- The Wii Remote bar has power only while Dolphin runs unpaused, so the Wii Remotes switch off
+  on every pause (press a button to reconnect) and the bar's glow goes dark. That needs a USB
+  hub with per-port power switching between the Mac and the bar; the M2 Mac mini's own ports
+  cannot do it (uhubctl finds nothing there). Without such a hub the bar simply stays on.
+
+/home sends the TV to its launcher, /quit quits Dolphin and goes home, /status reports.
+LAN only, no authentication: it trusts the house.
 """
-import json, os, subprocess, time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
+import os
+import re
+import signal
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-CFG = {"tv": "192.168.1.152:5555", "hdmi_key": 244, "port": 8766, "app": "Dolphin"}  # 244 = KEYCODE_TV_INPUT_HDMI_2
-ADB = os.path.expanduser("~/Library/Android/platform-tools/adb")
-USER = os.environ.get("WII_USER", "sal"); UID = os.environ.get("WII_UID", "502")
-def as_user(*args):  # run in the console user's GUI session; we are a system daemon
-    return sh("launchctl", "asuser", UID, "sudo", "-u", USER, *args)
+CFG = {
+    "tv": "192.168.1.152:5555",
+    "hdmi_key": 244,                       # KEYCODE_TV_INPUT_HDMI_2
+    "hdmi_input": "HdmiInputService/HW3",  # HDMI 2, as the TV's dumpsys tv_input names it
+    "port": 8766,
+    "app": "Dolphin",
+    # No Dolphin UI, fullscreen whatever the GUI says, straight into the Wii System Menu.
+    "boot": ["-b", "-C", "Dolphin.Display.Fullscreen=True", "-n", "0000000100000002"],
+    "poll_s": 2.0,
+    "away_s": 4.0,             # the TV shows something else this long: the Wii pauses
+    "lost_s": 120.0,           # the TV does not answer this long (switched off): the Wii pauses
+    "quit_after_s": 2 * 3600,  # paused this long: Dolphin quits
+    "bar": "Mayflash",         # the Wii Remote bar, as uhubctl describes it
+}
+HOME = os.path.expanduser("~")
+DIR = os.path.join(HOME, "Library/Application Support/wii")
+ADB = os.path.join(HOME, "Library/Android/platform-tools/adb")
+UHUBCTL = os.path.join(DIR, "uhubctl")
+STATE = os.path.join(DIR, "state.json")
+USER = os.environ.get("WII_USER", "sal")
+UID = os.environ.get("WII_UID", "502")
+LOCK = threading.RLock()
+
+
+def log(*a):
+    print(time.strftime("%H:%M:%S"), *a, flush=True)
+
 
 def sh(*args, timeout=20):
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(args, 124, "", "timeout")
 
-LAST_ADB = {"out": ""}
+
+def as_user(*args):
+    """Run in the console user's GUI session; this is a system daemon."""
+    return sh("launchctl", "asuser", UID, "sudo", "-u", USER, *args)
+
+
+def state():
+    try:
+        with open(STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save(s):
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(s, f)
+    os.replace(tmp, STATE)
+
+
+# ---- the TV, over its network adb (with a key the TV already trusts)
+
+def adb(*args, timeout=10):
+    """One adb command to the TV. Its Wi-Fi adb goes 'offline' now and then and only a
+    disconnect/connect clears it, so a failure gets one reconnect and one retry."""
+    r = sh(ADB, "-s", CFG["tv"], *args, timeout=timeout)
+    if r.returncode != 0:
+        sh(ADB, "disconnect", CFG["tv"], timeout=5)
+        sh(ADB, "connect", CFG["tv"], timeout=5)
+        r = sh(ADB, "-s", CFG["tv"], *args, timeout=timeout)
+    return r
+
+
 def tv_key(code):
-    """A fresh adb connection to the TV each time: its Wi-Fi adb goes offline now and then and only a
-    disconnect/connect clears it. Up to three tries, a second apart."""
-    log = []
-    for attempt in range(3):
-        sh(ADB, "disconnect", CFG["tv"])
-        c = sh(ADB, "connect", CFG["tv"]); log.append(c.stdout.strip() or c.stderr.strip())
-        if "connected" in c.stdout:
-            r = sh(ADB, "-s", CFG["tv"], "shell", "input", "keyevent", str(code)); log.append((r.stdout + r.stderr).strip())
-            if r.returncode == 0:
-                LAST_ADB["out"] = " | ".join(x for x in log if x); print("adb ok:", LAST_ADB["out"], flush=True); return True
+    for _ in range(3):
+        if adb("shell", "input", "keyevent", str(code)).returncode == 0:
+            return True
         time.sleep(1.0)
-    LAST_ADB["out"] = " | ".join(x for x in log if x); print("adb failed:", LAST_ADB["out"], flush=True)
+    log("tv key", code, "failed")
     return False
 
-def running():
-    return sh("pgrep", "-x", CFG["app"]).returncode == 0
+
+def tv_view():
+    """'mac' when the TV shows this Mac's input, 'away' when it shows anything else or is
+    asleep, None when it did not answer."""
+    r = adb("shell", "dumpsys power | grep mWakefulness=; dumpsys window | grep mCurrentFocus=;"
+            " dumpsys tv_input | grep inputId:; true")
+    out = r.stdout
+    if r.returncode != 0 or "mWakefulness=" not in out:
+        return None
+    showing = ("mWakefulness=Awake" in out and "PassthroughPlayerActivity" in out
+               and CFG["hdmi_input"] in out)
+    return "mac" if showing else "away"
+
+
+# ---- the Wii Remote bar, through a hub with per-port power switching
+
+_no_hub_until = 0.0
+
+
+def bar_where():
+    """(hub location, port) of the bar as uhubctl sees it. Kept in the state file, because once
+    its port is off the bar no longer shows up by name."""
+    if os.path.exists(UHUBCTL):
+        hub = None
+        for line in sh(UHUBCTL, "-s", CFG["bar"], timeout=15).stdout.splitlines():
+            m = re.match(r"Current status for hub (\S+)", line)
+            if m:
+                hub = m.group(1)
+                continue
+            m = re.match(r"\s*Port (\d+):", line)
+            if hub and m and CFG["bar"].lower() in line.lower():
+                return [hub, m.group(1)]
+    return state().get("bar_where")
+
+
+def bar(on):
+    """Power the bar on or off. Without a switchable hub there is nothing to switch; that is
+    checked again every five minutes, in case a hub has been plugged in since."""
+    global _no_hub_until
+    s = state()
+    if s.get("bar_on") == on and s.get("bar_where"):
+        return True
+    if time.time() < _no_hub_until:
+        return False
+    where = bar_where()
+    ok = False
+    if where:
+        r = sh(UHUBCTL, "-l", where[0], "-p", where[1], "-a", "on" if on else "off", timeout=15)
+        ok = r.returncode == 0
+        log("bar", "on" if on else "off", "ok" if ok else (r.stdout + r.stderr).strip()[-200:])
+    if not ok:
+        _no_hub_until = time.time() + 300
+        return False
+    s = state()
+    s["bar_on"], s["bar_where"] = on, where
+    save(s)
+    return True
+
+
+# ---- Dolphin
+
+def dolphin():
+    r = sh("pgrep", "-x", CFG["app"])
+    return int(r.stdout.split()[0]) if r.returncode == 0 and r.stdout.strip() else None
+
+
+def ps(pid, field):
+    return sh("ps", "-o", field + "=", "-p", str(pid)).stdout.strip()
+
+
+def frozen(pid):
+    return "T" in ps(pid, "stat")
+
+
+def batch(pid):
+    args = " " + ps(pid, "args") + " "
+    return " -b " in args or " --batch " in args
+
+
+def busy(pid):
+    """A Dolphin that is emulating something uses real CPU; one showing its game list does not."""
+    try:
+        return float(ps(pid, "%cpu") or 0) >= 8.0
+    except ValueError:
+        return True
+
 
 def wake():
-    """Nudge the Mac awake: a user-activity assertion lights the display if it had gone dark."""
+    """Light the Mac's display if it had gone dark."""
     subprocess.Popen(["launchctl", "asuser", UID, "sudo", "-u", USER, "caffeinate", "-u", "-t", "8"])
+
 
 def console_user():
     r = sh("stat", "-f", "%Su", "/dev/console")
     return r.stdout.strip() if r.returncode == 0 else ""
 
+
+def pause(pid):
+    """The Wii Remotes off with the bar, then Dolphin frozen exactly where it was."""
+    bar(False)
+    time.sleep(0.5)  # let Dolphin notice the remotes going before it stops
+    os.kill(pid, signal.SIGSTOP)
+    s = state()
+    s["paused_at"] = time.time()
+    save(s)
+    log("paused", pid)
+
+
+def resume(pid):
+    os.kill(pid, signal.SIGCONT)
+    bar(True)
+    s = state()
+    s.pop("paused_at", None)
+    save(s)
+    log("resumed", pid)
+
+
+def end_session():
+    s = state()
+    for k in ("session", "paused_at", "last_mac"):
+        s.pop(k, None)
+    save(s)
+    bar(False)
+
+
+def stop(pid):
+    """Quit Dolphin: thaw it, ask it to close, and kill it only if it has not gone in 10 s."""
+    try:
+        os.kill(pid, signal.SIGCONT)
+        time.sleep(1.0)
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    for _ in range(40):
+        if dolphin() is None:
+            break
+        time.sleep(0.25)
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            log("Dolphin did not close on SIGTERM; killed")
+        except ProcessLookupError:
+            pass
+    end_session()
+    log("quit", pid)
+
+
+# ---- what the Wii tile and the watcher do
+
 def play():
-    t0 = time.time()
-    # Right after a boot the daemon is up before the auto-login finishes: give the desktop a moment.
-    while console_user() in ("", "root") and time.time() - t0 < 40:
-        time.sleep(0.5)
-    wake()
-    was = running()
-    as_user("open", "-a", CFG["app"])
-    while not running() and time.time() - t0 < 15:
-        time.sleep(0.2)
-    if not running():
-        return {"ok": False, "error": f"{CFG['app']} did not start"}
-    if not was:
-        time.sleep(2.5)  # let its window come up before the TV looks at it
-    switched = tv_key(CFG["hdmi_key"])
-    return {"ok": True, "started": not was, "switched": switched, "took_ms": int((time.time() - t0) * 1000)}
+    with LOCK:
+        t0 = time.time()
+        # Right after a boot the daemon is up before the auto-login has finished.
+        while console_user() in ("", "root") and time.time() - t0 < 40:
+            time.sleep(0.5)
+        wake()
+        pid = dolphin()
+        if pid and not batch(pid) and not frozen(pid) and not busy(pid):
+            # A Dolphin window left open (macOS reopens apps at login), not a Wii: replace it.
+            stop(pid)
+            pid = None
+        started = pid is None
+        if started:
+            as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
+            while dolphin() is None and time.time() - t0 < 60:
+                time.sleep(0.2)
+            pid = dolphin()
+            if pid is None:
+                return {"ok": False, "error": "Dolphin did not start"}
+        elif frozen(pid):
+            resume(pid)
+        else:
+            as_user("open", "-a", CFG["app"])  # to the front
+        bar(True)
+        s = state()
+        s["session"], s["last_mac"] = True, time.time()
+        s.pop("paused_at", None)
+        save(s)
+        if started:
+            time.sleep(2.5)  # switch while the Wii Menu loads, not before Dolphin has a window
+        switched = tv_key(CFG["hdmi_key"])
+        return {"ok": True, "started": started, "switched": switched,
+                "took_ms": int((time.time() - t0) * 1000)}
+
+
+def tick():
+    s = state()
+    pid = dolphin()
+    if pid is None:
+        if s.get("session"):
+            log("Dolphin closed")
+            on_mac = tv_view() == "mac"
+            end_session()
+            if on_mac:
+                tv_key(3)  # like an app closing: back to the launcher
+        else:
+            bar(False)  # nothing to play: the remotes off, the mantle dark
+        return
+    view = tv_view()
+    now = time.time()
+    if view == "mac":
+        s["session"], s["last_mac"] = True, now  # also when the TV's own input menu got here
+        save(s)
+        if frozen(pid):
+            wake()
+            resume(pid)
+        return
+    if not s.get("session"):
+        bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
+        return
+    if frozen(pid):
+        if now - s.get("paused_at", now) >= CFG["quit_after_s"]:
+            stop(pid)
+        return
+    away = now - s.get("last_mac", now)
+    if (view == "away" and away >= CFG["away_s"]) or (view is None and away >= CFG["lost_s"]):
+        pause(pid)
+
+
+def watch():
+    while True:
+        time.sleep(CFG["poll_s"])
+        try:
+            with LOCK:
+                tick()
+        except Exception as e:  # the watcher must outlive anything one tick does
+            log("watch:", repr(e))
+
 
 def home():
-    ok = tv_key(3)
-    return {"ok": ok, "adb": LAST_ADB["out"]}
+    return {"ok": tv_key(3)}
+
 
 def quit_():
-    sh("pkill", "-u", USER, "-x", CFG["app"])
-    time.sleep(0.5)
-    return {"ok": True, "stopped": not running(), "home": tv_key(3)}
+    with LOCK:
+        pid = dolphin()
+        if pid:
+            stop(pid)
+        return {"ok": True, "stopped": dolphin() is None, "home": tv_key(3)}
+
+
+def status():
+    s = state()
+    pid = dolphin()
+    return {"ok": True, "running": pid is not None, "paused": bool(pid and frozen(pid)),
+            "session": bool(s.get("session")), "tv": tv_view(), "bar_on": s.get("bar_on"),
+            "bar_where": s.get("bar_where")}
+
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         try:
-            body = {"/play": play, "/home": home, "/quit": quit_, "/status": lambda: {"ok": True, "running": running()}}.get(path)
-            if body is None:
-                self.send_response(404); self.end_headers(); return
-            out = json.dumps(body()).encode()
-            self.send_response(200); self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+            handler = {"/play": play, "/home": home, "/quit": quit_, "/status": status}.get(path)
+            if handler is None:
+                self.send_response(404)
+                self.end_headers()
+                return
+            out = json.dumps(handler()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
         except Exception as e:  # never die on a bad request
             out = json.dumps({"ok": False, "error": str(e)}).encode()
-            self.send_response(500); self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+            self.send_response(500)
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
     def log_message(self, fmt, *args):
-        print(time.strftime("%H:%M:%S"), self.address_string(), fmt % args, flush=True)
+        log(self.address_string(), fmt % args)
+
 
 if __name__ == "__main__":
-    print("wii listening on", CFG["port"], flush=True)
-    HTTPServer(("0.0.0.0", CFG["port"]), H).serve_forever()
+    log("wii listening on", CFG["port"])
+    threading.Thread(target=watch, daemon=True).start()
+    ThreadingHTTPServer(("0.0.0.0", CFG["port"]), H).serve_forever()
