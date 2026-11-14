@@ -125,7 +125,23 @@ class VolumeService : AccessibilityService() {
         target = -1; settledAt = t
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    /**
+     * Fire OS puts its volume box up the instant the key is pressed, a second before the soundbar
+     * reports the new volume back; the service is told the moment that window appears, so the pill
+     * goes up right then, over it, with the level we are at or heading to.
+     */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (event.packageName != "com.android.systemui") return
+        val what = "${event.className} ${event.text}"
+        Log.i("Glass", "volume: systemui window $what")
+        if (!what.contains("olume")) return
+        val levels = ConfigStore.peek(this)?.volume?.levels ?: 20
+        if (levels <= 0) return
+        val step = (audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / levels).coerceAtLeast(1)
+        val shown = if (target >= 0) target else audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        hud?.show(shown / step, levels, shown)
+    }
     override fun onInterrupt() = Unit
 
     private companion object {
@@ -134,7 +150,7 @@ class VolumeService : AccessibilityService() {
         /** How long after landing a small change is still taken for the soundbar's trailing report. */
         const val TRAIL_MS = 800L
         /** How long to wait for the soundbar's report before tapping again, and how many taps at most. */
-        const val NUDGE_WAIT_MS = 700L
+        const val NUDGE_WAIT_MS = 1500L
         const val MAX_NUDGES = 12
     }
 

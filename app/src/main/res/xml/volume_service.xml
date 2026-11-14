@@ -5,6 +5,7 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/volume_service_description"
     android:accessibilityEventTypes="typeWindowStateChanged"
+    android:packageNames="com.android.systemui"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault"
     android:canRequestFilterKeyEvents="true"
