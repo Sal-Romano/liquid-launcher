@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.sal.glass.data.BlurCache
+import dev.sal.glass.data.PhotoInfos
 import dev.sal.glass.data.Thumbs
 import dev.sal.glass.data.Wallpapers
 import kotlinx.coroutines.CompletableDeferred
@@ -190,6 +191,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
 
     private fun discard(file: File) {
         blurs.forget(file)
+        PhotoInfos.remove(file.name)
         file.delete()
     }
 
@@ -212,6 +214,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         blurs.forget(file)
         thumbs.forget(file)
         val deleted = Wallpapers.remove(file)
+        if (deleted) PhotoInfos.remove(file.name)
         Log.i("Glass", "removed ${file.name}${if (deleted) "" else " (hidden: the launcher may not delete it)"}")
         known = known - file
         queue.remove(file)

@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Text
+import dev.sal.glass.data.PhotoInfos
 import dev.sal.glass.data.Thumbs
 import dev.sal.glass.data.Wallpapers
 import dev.sal.glass.phone.Phone
@@ -489,11 +490,12 @@ private fun caption(context: android.content.Context, file: File, current: Boole
     val base = if (Wallpapers.isFromPhone(file)) {
         val stamp = file.nameWithoutExtension.removePrefix(Wallpapers.PHONE_PREFIX).take(15)
         val date = runCatching { SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(stamp) }.getOrNull()
+        val who = PhotoInfos.get(file.name)?.from?.let { "From $it" } ?: "From a phone"
         if (date != null) {
             val day = DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), date)
-            "From a phone  ·  $day, ${DateFormat.getTimeFormat(context).format(date)}"
-        } else "From a phone"
-    } else file.nameWithoutExtension
+            "$who  ·  $day, ${DateFormat.getTimeFormat(context).format(date)}"
+        } else who
+    } else PhotoInfos.get(file.name)?.place?.let { "${it.name}  ·  ${file.nameWithoutExtension}" } ?: file.nameWithoutExtension
     return if (current) "$base  ·  on screen" else base
 }
 

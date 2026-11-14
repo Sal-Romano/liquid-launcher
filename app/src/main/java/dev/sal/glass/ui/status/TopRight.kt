@@ -91,26 +91,61 @@ private val ButtonShape = SquircleShape(13.dp, 0.6f)
  * and Down returns. Fades with the dock when the screen goes idle.
  */
 @Composable
-fun TopRight(visible: Boolean, onSettings: () -> Unit, onFocus: (Boolean) -> Unit = {}, modifier: Modifier = Modifier) {
+fun TopRight(
+    visible: Boolean,
+    onSettings: () -> Unit,
+    onInfo: () -> Unit = {},
+    onFocus: (Boolean) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(220), label = "topRightAlpha")
     val net = rememberNetworkStatus()
-    val liftPx = with(LocalDensity.current) { 2.dp.toPx() }
+    var infoFocused by remember { mutableStateOf(false) }
+    var gearFocused by remember { mutableStateOf(false) }
     Row(modifier.graphicsLayer { this.alpha = alpha }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
             Modifier.height(38.dp).glass(PillShape, GlassVariant.Pill, alpha = { alpha }).padding(horizontal = 13.dp),
             contentAlignment = Alignment.Center,
         ) { NetworkGlyph(net, Modifier.size(24.dp)) }
-        var focused by remember { mutableStateOf(false) }
-        val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "gearLift")
-        Box(
-            Modifier
-                .size(42.dp)
-                .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = { alpha }, liftScale = 0.12f, liftPx = liftPx)
-                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused); if (it.isFocused) Sounds.tick() }
-                .focusable()
-                .tileClicks(onSettings, {}),
-            contentAlignment = Alignment.Center,
-        ) { GearGlyph(Modifier.size(24.dp), spin = lift.value) }
+        // About the photo on screen: where and when it was taken, and who sent it.
+        GlassButton(alpha = { alpha }, onClick = onInfo, onFocus = { infoFocused = it; onFocus(it || gearFocused) }) { lift ->
+            InfoGlyph(Modifier.size(24.dp), lift = lift)
+        }
+        GlassButton(alpha = { alpha }, onClick = onSettings, onFocus = { gearFocused = it; onFocus(it || infoFocused) }) { lift ->
+            GearGlyph(Modifier.size(24.dp), spin = lift)
+        }
+    }
+}
+
+/** A 42 dp glass button that lifts on focus; [content] gets the lift (0..1) to animate its glyph with. */
+@Composable
+private fun GlassButton(alpha: () -> Float, onClick: () -> Unit, onFocus: (Boolean) -> Unit, content: @Composable (Float) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 500f), label = "buttonLift")
+    val liftPx = with(LocalDensity.current) { 2.dp.toPx() }
+    Box(
+        Modifier
+            .size(42.dp)
+            .glass(ButtonShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = alpha, liftScale = 0.12f, liftPx = liftPx)
+            .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused); if (it.isFocused) Sounds.tick() }
+            .focusable()
+            .tileClicks(onClick, {}),
+        contentAlignment = Alignment.Center,
+    ) { content(lift.value) }
+}
+
+/** An "i" in a ring; the dot rises a little as the button takes focus. */
+@Composable
+private fun InfoGlyph(modifier: Modifier = Modifier, lift: Float = 0f) {
+    Canvas(modifier) {
+        val w = size.width
+        val c = Offset(w / 2f, w / 2f)
+        drawCircle(Color.White, radius = w * 0.41f, center = c, style = Stroke(width = w * 0.09f))
+        drawCircle(Color.White, radius = w * 0.07f, center = Offset(c.x, w * (0.31f - 0.03f * lift)))
+        drawRoundRect(
+            Color.White, topLeft = Offset(c.x - w * 0.06f, w * 0.43f), size = Size(w * 0.12f, w * 0.3f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.06f),
+        )
     }
 }
 

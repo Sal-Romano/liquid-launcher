@@ -73,7 +73,8 @@ function connect() {
 
 async function collect(m) {
   const mode = m.mode ?? "keep";
-  log(`offered ${m.id}: ${mode}, ${m.bytes} bytes from ${m.from ?? "?"}, draft ${m.draft ?? "-"}, show ${m.show}`);
+  log(`offered ${m.id}: ${mode}, ${m.bytes} bytes, draft ${m.draft ?? "-"}, show ${m.show}`);
+  log(`  from: ${JSON.stringify(m.from ?? null)}  meta: ${JSON.stringify(m.meta ?? null)}`);
   if (slow) await new Promise((r) => setTimeout(r, slow));
   const res = await fetch(`${base}/api/tv/${id}/wallpapers/${m.id}`, { headers: { Authorization: `Bearer ${secret}` } });
   if (!res.ok) throw new Error(`download ${res.status}`);

@@ -367,6 +367,8 @@
       return;
     }
     note("Opening…");
+    // From the original file: the canvas the photo is sent from keeps none of it.
+    const reading = window.LiquidExif ? window.LiquidExif.read(file).catch(() => ({})) : Promise.resolve({});
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.decoding = "async";
@@ -382,6 +384,8 @@
       note("Couldn’t open that photo. Try a JPEG or PNG.", "bad");
       return;
     }
+    // Settled before the old photo's canvases are released, so no frame draws a released one.
+    const details = await reading;
     if (photo) {
       URL.revokeObjectURL(photo.url);
       // Safari counts canvas memory until a canvas is sized to zero; a few photos in, it refuses more.
@@ -391,7 +395,7 @@
     // naturalWidth/Height already follow the EXIF orientation.
     const w = img.naturalWidth;
     const h = img.naturalHeight;
-    photo = { img, url, w, h };
+    photo = { img, url, w, h, details, shareLocation: true, place: null };
     // A copy small enough to pan and pinch smoothly; the full photo is used for the send.
     photo.preview = downscale(img, w, h, 2400);
     photo.blur = blurCover(photo.preview.source, w * photo.preview.scale, h * photo.preview.scale);
@@ -416,6 +420,8 @@
     clearTimeout(keepTimer);
     clearTimeout(saveTimer);
     note("");
+    renderDetails();
+    lookupPlace(photo);
     renderButtons();
     sizeScreen();
     requestDraw();
@@ -919,9 +925,14 @@
     return [...b].map((x) => (x % 36).toString(36)).join("");
   }
 
-  /** The framing as a string; the same framing gives the same string. */
+  /**
+   * What a send would carry, as a string: the framing, and whether the location goes with it (a
+   * test the TV holds keeps the details it was sent with, so leaving the location out afterwards
+   * has to send again). The same string means the same photo on the TV.
+   */
   function framing() {
-    return `${view.mode}:${view.zoom.toFixed(3)}:${Math.round(view.cx)}:${Math.round(view.cy)}`;
+    const where = photo && photo.shareLocation ? "located" : "unlocated";
+    return `${view.mode}:${view.zoom.toFixed(3)}:${Math.round(view.cx)}:${Math.round(view.cy)}:${where}`;
   }
 
   function note(text, tone, about = null) {
@@ -993,12 +1004,12 @@
 
   $("test").addEventListener("click", () => {
     const st = $("test").dataset.state;
-    if (!busy && st !== "sending" && st !== "waiting") sendTest();
+    if (!busy && st !== "sending" && st !== "waiting") withName(sendTest);
   });
 
   $("use").addEventListener("click", () => {
     const st = $("use").dataset.state;
-    if (!busy && st !== "sending" && st !== "waiting" && st !== "done") useThis();
+    if (!busy && st !== "sending" && st !== "waiting" && st !== "done") withName(useThis);
   });
 
   /** Test on TV: up on the TV as a preview, not saved; a newer test replaces it. */
@@ -1098,6 +1109,9 @@
 
   /** Renders the framing and posts it. Resolves { status, body, from }, or null if it never went. */
   async function sendPhoto(mode, forDraft) {
+    const from = senderName();
+    if (!from) return null; // withName() makes sure of one; never send without
+    const meta = metaFor(photo);
     let blob;
     try {
       blob = await renderJpeg();
@@ -1111,7 +1125,6 @@
       note("Couldn’t prepare that photo. Try another one.", "bad");
       return null;
     }
-    const from = senderName();
     const dest = pair;
     const res = await new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
@@ -1121,6 +1134,7 @@
       xhr.setRequestHeader("X-From", encodeURIComponent(from));
       xhr.setRequestHeader("X-Mode", mode);
       xhr.setRequestHeader("X-Draft", forDraft);
+      if (meta) xhr.setRequestHeader("X-Meta", encodeURIComponent(JSON.stringify(meta)));
       xhr.timeout = 120_000;
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
@@ -1233,28 +1247,164 @@
 
   // ---------------------------------------------------------------- who is sending
 
-  function guessDevice() {
-    const ua = navigator.userAgent || "";
-    if (/iPhone/.test(ua)) return "iPhone";
-    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
-    if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android phone" : "Android tablet";
-    if (/Macintosh|Mac OS X/.test(ua)) return "Mac";
-    return "PC";
+  // The TV shows who sent each photo, so a name is asked for once, before the first send.
+  const NAME_KEY = "liquid.name";
+  /** The device labels earlier versions sent; not names. */
+  const DEVICE_LABELS = new Set(["iPhone", "iPad", "Android phone", "Android tablet", "Mac", "PC", "this phone"]);
+  /** Kept here too, for a browser that will not store anything (private mode). */
+  let nameHeld = "";
+  let afterName = null;
+
+  function cleanName(raw) {
+    return String(raw ?? "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
   }
 
   function senderName() {
-    const s = store.get("liquid.from");
-    return typeof s === "string" && s.trim() ? s.trim().slice(0, 40) : guessDevice();
+    const s = store.get(NAME_KEY);
+    return (typeof s === "string" && cleanName(s)) || nameHeld;
   }
 
-  $("rename").addEventListener("click", () => {
-    const v = window.prompt("What should the TV call this phone?", senderName());
-    if (v === null) return;
-    const name = v.trim().slice(0, 40);
-    if (name) store.set("liquid.from", name);
-    else store.del("liquid.from");
-    $("rename").textContent = senderName();
+  // A name typed into the old rename prompt carries over; a device label does not.
+  (function adoptOldName() {
+    const old = store.get("liquid.from");
+    if (old === null) return;
+    const name = cleanName(old);
+    if (!senderName() && name && !DEVICE_LABELS.has(name)) store.set(NAME_KEY, name);
+    store.del("liquid.from");
+  })();
+
+  /** Runs [action] once there is a name; asks for one first if there is not. */
+  function withName(action) {
+    if (senderName()) action();
+    else openNameSheet(action);
+  }
+
+  function openNameSheet(then) {
+    afterName = then || null;
+    $("name-input").value = senderName();
+    $("name-hint").textContent = "";
+    $("name-sheet").hidden = false;
+    // Focus after the sheet is laid out, so the phone's keyboard comes up with it.
+    requestAnimationFrame(() => $("name-input").focus());
+  }
+
+  function closeNameSheet() {
+    $("name-sheet").hidden = true;
+    afterName = null;
+  }
+
+  $("name-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = cleanName($("name-input").value);
+    if (!name) {
+      $("name-hint").textContent = "Add your name first.";
+      $("name-input").focus();
+      return;
+    }
+    nameHeld = name;
+    store.set(NAME_KEY, name);
+    renderSender();
+    const then = afterName;
+    closeNameSheet();
+    $("name-input").blur();
+    if (then) then();
   });
+  $("name-cancel").addEventListener("click", closeNameSheet);
+  $("name-sheet").addEventListener("click", (e) => { if (e.target === $("name-sheet")) closeNameSheet(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("name-sheet").hidden) closeNameSheet(); });
+
+  /** "Sending as Sal · change", or an invitation to add a name. */
+  function renderSender() {
+    const name = senderName();
+    const button = el("button", "link", name ? "change" : "Add your name");
+    button.type = "button";
+    button.addEventListener("click", () => openNameSheet(null));
+    if (name) $("as").replaceChildren("Sending as ", el("strong", "", name), " · ", button);
+    else $("as").replaceChildren("Who’s sending? ", button);
+  }
+
+  // ---------------------------------------------------------------- the photo's details
+
+  /** "📍 Lisbon, Portugal · 14 Jul 2024 · iPhone 15 Pro": what was found, and the location's toggle. */
+  function renderDetails() {
+    const line = $("details");
+    if (!photo) {
+      line.hidden = true;
+      return;
+    }
+    const d = photo.details || {};
+    const parts = [];
+    if (typeof d.lat === "number" && typeof d.lon === "number") {
+      const on = photo.shareLocation;
+      const loc = el("button", "loc", on ? `📍 ${photo.place || coordinates(d.lat, d.lon)}` : "Location left out");
+      loc.type = "button";
+      loc.setAttribute("aria-pressed", String(on));
+      loc.title = on ? "Tap to leave the location out" : "Tap to include the location";
+      loc.addEventListener("click", () => {
+        if (!photo) return;
+        photo.shareLocation = !photo.shareLocation;
+        renderDetails();
+        renderButtons();
+      });
+      parts.push(loc);
+    } else {
+      parts.push(el("span", "none", "No location in this photo"));
+    }
+    if (d.takenAt) parts.push(document.createTextNode(day(d.takenAt)));
+    if (d.camera) parts.push(document.createTextNode(d.camera));
+    // Each "·" travels with the part after it, so a wrapped line never ends on one.
+    const nodes = [parts[0]];
+    for (const p of parts.slice(1)) {
+      const part = el("span", "part");
+      part.append(el("span", "sep", "·"), p);
+      nodes.push(part);
+    }
+    line.replaceChildren(...nodes);
+    line.hidden = false;
+  }
+
+  function coordinates(lat, lon) {
+    return `${Math.abs(lat).toFixed(2)}° ${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(2)}° ${lon >= 0 ? "E" : "W"}`;
+  }
+
+  /** The EXIF local date, as written: "14 Jul 2024" (or the phone's own order). */
+  function day(takenAt) {
+    const [y, m, d] = takenAt.slice(0, 10).split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  }
+
+  /** The place's name from the relay; without a maps key (503) or on any failure the coordinates stay. */
+  async function lookupPlace(p) {
+    const d = p.details;
+    const dest = pair;
+    if (!dest || typeof d.lat !== "number") return;
+    try {
+      const r = await fetch(`/api/tv/${dest.id}/place?lat=${d.lat}&lon=${d.lon}`, { headers: { Authorization: `Bearer ${dest.key}` } });
+      if (!r.ok) return;
+      const j = await r.json();
+      const name = typeof j.name === "string" ? j.name.trim() : "";
+      const country = typeof j.country === "string" ? j.country.trim() : "";
+      const text = name && country && name !== country ? `${name}, ${country}` : country || name;
+      if (!text || photo !== p) return;
+      p.place = text;
+      renderDetails();
+    } catch {
+      // The coordinates stay.
+    }
+  }
+
+  /** What goes with the photo in X-Meta: the details found, without the location if it is left out. */
+  function metaFor(p) {
+    const d = (p && p.details) || {};
+    const m = {};
+    if (d.takenAt) m.takenAt = d.takenAt;
+    if (p && p.shareLocation && typeof d.lat === "number" && typeof d.lon === "number") {
+      m.lat = d.lat;
+      m.lon = d.lon;
+    }
+    if (d.camera) m.camera = d.camera;
+    return Object.keys(m).length ? m : null;
+  }
 
   // ---------------------------------------------------------------- page events
 
@@ -1330,7 +1480,7 @@
   app.dataset.photo = "no";
   if (finePointer) $("hint").textContent = "Drag to frame it. Scroll to zoom, double-click to reset.";
   setChrome(store.get("liquid.chrome") !== false);
-  $("rename").textContent = senderName();
+  renderSender();
   renderButtons();
   tickClock();
   start();

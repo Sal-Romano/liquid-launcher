@@ -49,7 +49,9 @@ All under `/api/tv/<tvId>/`. Errors are `{"error": "..."}` with the status below
 | `GET  socket`           | `Authorization: Bearer <secret>`, `X-Send-Key`, `X-TV-Name` (URL-encoded, optional) | the TV's WebSocket. 401 on a wrong secret. |
 | `GET  live?k=<sendKey>` | key in the query           | the phone's WebSocket. A wrong key is accepted and closed at once with 4401.                |
 | `GET  status`           | `Authorization: Bearer <sendKey>` | `{online, name, uploads}`, the same as the phone socket's hello                     |
-| `POST wallpapers`       | `Authorization: Bearer <sendKey>` | body: the image (JPEG, PNG or WebP, ≤ 20 MB). Headers: `X-Mode: test` for a look on the TV that is not saved (default `keep`, a wallpaper); `X-Draft` (8-32 `[a-z0-9]`, one per photo chosen on the phone: a keep replaces the TV's earlier keep of the same draft, and a test supersedes an earlier test still waiting); `X-From` (URL-encoded sender label); `X-Show: later` to only add a keep to the rotation. 201 `{id, state, online}`; 401 key reset, 404 no TV ever connected with that id, 409 a test while the TV is off (nothing stored), 413, 415, 429 (30 photos already waiting) |
+| `POST wallpapers`       | `Authorization: Bearer <sendKey>` | body: the image (JPEG, PNG or WebP, ≤ 20 MB). Headers: `X-Mode: test` for a look on the TV that is not saved (default `keep`, a wallpaper); `X-Draft` (8-32 `[a-z0-9]`, one per photo chosen on the phone: a keep replaces the TV's earlier keep of the same draft, and a test supersedes an earlier test still waiting); `X-From` (URL-encoded name of whoever sends it; the page asks for it once); `X-Meta` (URL-encoded JSON of what the phone read from the photo before rendering it: `takenAt` "YYYY-MM-DDTHH:MM[:SS][±HH:MM]", `lat`/`lon` in degrees, `camera`; the relay keeps only those, well-formed, and passes them on in the offer as `meta`); `X-Show: later` to only add a keep to the rotation. 201 `{id, state, online}`; 401 key reset, 404 no TV ever connected with that id, 409 a test while the TV is off (nothing stored), 413, 415, 429 (30 photos already waiting) |
+| `GET  place?lat=&lon=` or `place?q=` | TV secret or send key | where that is (Google Geocoding): `{name, locality, region, country, countryCode, lat, lon}`; `q` is a name, such as a wallpaper's file name in words. 404 nowhere, 503 no maps key on the relay |
+| `GET  map?lat=&lon=&zoom=4` | TV secret or send key | a 1280x720 PNG, a dark map centred there with country borders and names only (Google Maps Static); the TV draws its own pin at the centre |
 | `POST wallpapers/<id>/keep` | `Authorization: Bearer <sendKey>` | Use this, for a test that is on the TV: the TV saves the copy it already has. 202, then the photo goes to `kept` (or `failed`: the TV no longer has it, so send a keep). 409 if it is not a test, not on the TV yet, or the TV is off |
 | `GET  wallpapers/<id>`  | `Authorization: Bearer <secret>` | the TV fetches the bytes; 410 once they are gone                                     |
 
@@ -67,7 +69,7 @@ Object → TV:
 
 - `{"t":"hello","v"}` on connect (`v`: protocol version, 2), then a `wallpaper` for every photo still waiting.
 - `{"t":"replaced"}` just before a 4000 close (a newer connection with the same secret).
-- `{"t":"wallpaper","id","type","bytes","from","at","show","mode","draft"}`: fetch it from
+- `{"t":"wallpaper","id","type","bytes","from","at","show","mode","draft","meta"}`: fetch it from
   `wallpapers/<id>`. `mode: "test"`: put it up as a preview, not saved, rotation held. `mode: "keep"`:
   save it (replacing the earlier keep of the same `draft`) and put it up, or with `show: false` only
   add it to the rotation (a backlog photo, or `X-Show: later`).
@@ -100,13 +102,19 @@ once.
 Close codes: 4000 a newer TV connection replaced this one, 4001 the link was reset on the TV
 (phone), 4401 wrong key (phone), 4404 no TV with that id (phone).
 
+Place names and maps come from Google Maps Platform through the relay, so the key never reaches a
+phone or the TV. Each TV's object caches them in its SQLite storage for 30 days, which Google's terms
+allow; the edge cache does not work on workers.dev.
+
 ## Develop and deploy
 
 ```sh
 cd cloud
 wrangler dev                 # http://localhost:8787, the emulator reaches it at http://10.0.2.2:8787
 node test/flow.mjs           # end-to-end: a fake TV and a fake phone against wrangler dev
+node test/fake-tv.mjs        # a stand-in TV for working on the page; prints the page address
 wrangler deploy              # https://liquid.<account>.workers.dev
+wrangler secret put GOOGLE_MAPS_KEY   # Maps Static API + Geocoding API; locally: GOOGLE_MAPS_KEY=… in .dev.vars
 ```
 
 The launcher's server address is `phone.server` in `launcher.json`; when it is absent the build's

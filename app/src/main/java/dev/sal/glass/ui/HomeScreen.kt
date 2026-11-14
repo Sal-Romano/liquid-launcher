@@ -49,6 +49,10 @@ import dev.sal.glass.data.Apps
 import dev.sal.glass.drop.Drop
 import dev.sal.glass.phone.Phone
 import dev.sal.glass.phone.PhoneLink
+import dev.sal.glass.phone.Insights
+import dev.sal.glass.data.PhotoInfo
+import dev.sal.glass.ui.overlay.PhotoInfoCard
+import androidx.compose.ui.graphics.ImageBitmap
 import dev.sal.glass.ui.clock.Clock
 import dev.sal.glass.ui.overlay.DropViewer
 import dev.sal.glass.ui.dock.AppIcons
@@ -76,14 +80,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
 
-private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop, Wallpapers }
+private enum class Overlay { None, AllApps, Settings, Context, Folder, Drop, Wallpapers, Info }
 
 /**
  * Photo → clock → dock → overlays. One key router at the root: in the idle state any key only
  * wakes the dock; Back hides the dock and never leaves the launcher; Menu opens settings.
  */
 @Composable
-fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wakeSignal: Long) {
+fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wakeSignal: Long, homeSignal: Long = 0L) {
     val context = LocalContext.current
     val config = store.config
     var dockVisible by remember { mutableStateOf(true) }
@@ -145,6 +149,12 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     // The phone link follows launcher.json's relay, or the build's own.
     LaunchedEffect(config.phone.server) { phone.start(config.phone.server ?: BuildConfig.PHONE_SERVER) }
     LaunchedEffect(wakeSignal) { engine.rescan(); AppIcons.forgetInstalled(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
+    // Home closes whatever is open (a sheet, a screen, the info card, a folder): back to the photo and the dock.
+    LaunchedEffect(homeSignal) {
+        if (homeSignal == 0L) return@LaunchedEffect
+        overlay = Overlay.None
+        openFolder = null
+    }
     // Idle timer: the dock fades after idleHideSec without a key press, overlays excepted.
     LaunchedEffect(lastKeyAt, overlay, config.dock.idleHideSec) {
         if (config.dock.idleHideSec <= 0 || overlay != Overlay.None) return@LaunchedEffect
@@ -153,6 +163,23 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     }
 
     fun wake() { lastKeyAt = System.currentTimeMillis(); dockVisible = true }
+
+    // About the photo on screen, while the info card is up: what is known at once, then the rest
+    // (its EXIF, the place through the relay) and the map. Follows the photo if it changes meanwhile.
+    val infoFile = engine.current?.file
+    var info by remember { mutableStateOf<PhotoInfo?>(null) }
+    var infoMap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var infoMapLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(overlay == Overlay.Info, infoFile) {
+        if (overlay != Overlay.Info || infoFile == null) return@LaunchedEffect
+        info = null
+        infoMap = null
+        infoMapLoading = true
+        val known = Insights.about(infoFile, phone)
+        info = known
+        infoMap = Insights.map(context, known, phone)
+        infoMapLoading = false
+    }
 
     // News from the phone link ("Test from iPhone · not saved"). A photo on its way up also gets
     // Settings or the Wallpapers screen (where the QR code was scanned) out of the way, so the
@@ -230,6 +257,17 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                     Sounds.keyAt = android.os.SystemClock.uptimeMillis()
                     val wasIdle = !dockVisible
                     wake()
+                    // The info card is a label on the photo and never takes the remote, so it does not
+                    // depend on where focus is: Fast-forward moves on (the card follows the photo), the
+                    // arrows do nothing (the dock is hidden behind it), anything else closes it.
+                    if (overlay == Overlay.Info) {
+                        when (e.key) {
+                            Key.MediaFastForward, Key.MediaNext -> engine.skip()
+                            Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown -> Unit
+                            else -> overlay = Overlay.None
+                        }
+                        return@onPreviewKeyEvent true
+                    }
                     if (overlay != Overlay.None) return@onPreviewKeyEvent false
                     when (e.key) {
                         Key.Back -> { if (!wasIdle) dockVisible = false; true }
@@ -248,7 +286,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
             GlassLayer(GlassLayerId.Home, engine.current, engine.next, engine.fade, engine.zoom, dark, refraction)
             // All apps is a screen of its own: the clock and the dock leave while it is up, so the
             // grid sits on the photo alone instead of over the home chrome.
-            val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop && overlay != Overlay.Wallpapers
+            val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop && overlay != Overlay.Wallpapers && overlay != Overlay.Info
             val clockAlpha by animateFloatAsState(if (chrome) 1f else 0f, tween(220), label = "clockAlpha")
             // Clock block centred at 43% of the height.
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
@@ -258,6 +296,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
             TopRight(
                 visible = dockVisible && chrome && (overlay == Overlay.None || overlay == Overlay.Folder),
                 onSettings = { overlay = Overlay.Settings },
+                onInfo = { Sounds.tap(); overlay = Overlay.Info },
                 onFocus = { topFocused = it },
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 40.dp),
             )
@@ -304,6 +343,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                 onNewLink = { phone.newLink(); toast = "New code: phones need to scan it again" },
                 onDismiss = { overlay = Overlay.None },
             )
+            PhotoInfoCard(overlay == Overlay.Info, infoFile, info, infoMap, infoMapLoading) { overlay = Overlay.None }
             ContextMenu(
                 overlay == Overlay.Context, contextTile?.label ?: "",
                 onMoveLeft = { contextTile?.let { store.move(it.id, -1) } },

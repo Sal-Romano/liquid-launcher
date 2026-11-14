@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import dev.sal.glass.config.ConfigStore
+import dev.sal.glass.data.PhotoInfos
 import dev.sal.glass.data.Wallpapers
 import dev.sal.glass.drop.DropServer
 import dev.sal.glass.phone.Phone
@@ -60,6 +61,8 @@ class MainActivity : ComponentActivity() {
     }
     /** Bumped on every Home press (onNewIntent) and package change so the screen wakes and rescans. */
     private var wake by mutableLongStateOf(0L)
+    /** Bumped on a Home press only: it closes whatever sheet or screen is open. */
+    private var home by mutableLongStateOf(0L)
     /** An app installed or removed while we are up (the Appstore in front, adb): relight its tile. */
     private val packages = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) { wake = System.currentTimeMillis() }
@@ -68,6 +71,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Wallpapers.init(applicationContext)
+        PhotoInfos.init(applicationContext)
         drop.start()
         // A launcher never finishes on Back, whatever state it is in; the screen decides what Back
         // means (hide the dock, close an overlay). On the TV Fire OS never delivers Back out of a
@@ -79,12 +83,13 @@ class MainActivity : ComponentActivity() {
             addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
-        setContent { HomeScreen(engine, store, phone, wake) }
+        setContent { HomeScreen(engine, store, phone, wake, home) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         wake = System.currentTimeMillis()
+        home = wake
     }
 
     override fun onResume() {

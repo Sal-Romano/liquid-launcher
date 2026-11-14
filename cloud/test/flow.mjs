@@ -304,6 +304,42 @@ step("test: offered with mode and draft; got/shown; Use this keeps it without a 
   watcher.close();
 }
 
+step("X-Meta reaches the TV cleaned: known fields only, bad values dropped");
+{
+  const meta = { takenAt: "2024-07-14T18:22:05+02:00", lat: 38.7223, lon: -9.1393, camera: "iPhone 15 Pro", evil: "<script>", extra: 1 };
+  const j = await (await upload(jpeg(3000), { "X-Meta": encodeURIComponent(JSON.stringify(meta)) })).json();
+  const o = await tv.next((m) => m.t === "wallpaper" && m.id === j.id);
+  assert.deepEqual(o.meta, { takenAt: "2024-07-14T18:22:05+02:00", lat: 38.7223, lon: -9.1393, camera: "iPhone 15 Pro" });
+  tv.send({ t: "got", id: j.id });
+  const bad = await (await upload(jpeg(3001), { "X-Meta": encodeURIComponent(JSON.stringify({ takenAt: "yesterday", lat: 200, lon: 5 })) })).json();
+  const ob = await tv.next((m) => m.t === "wallpaper" && m.id === bad.id);
+  assert.equal(ob.meta, null);
+  tv.send({ t: "got", id: bad.id });
+}
+
+step("place and map: refused without this TV's secret or key (401); 503 or real answers with one");
+{
+  assert.equal((await fetch(`${base}/api/tv/${tvId}/place?lat=38.72&lon=-9.14`, { headers: { Authorization: `Bearer ${b64(16)}` } })).status, 401);
+  const asTv = await fetch(`${base}/api/tv/${tvId}/place?lat=38.72&lon=-9.14`, { headers: { Authorization: `Bearer ${secret}` } });
+  const asPhone = await fetch(`${base}/api/tv/${tvId}/place?q=${encodeURIComponent("aoraki mount cook")}`, { headers: { Authorization: `Bearer ${sendKey}` } });
+  if (asTv.status === 503) {
+    console.log("  (no GOOGLE_MAPS_KEY on this relay: place and map answer 503)");
+    assert.equal(asPhone.status, 503);
+  } else {
+    assert.equal(asTv.status, 200);
+    const p = await asTv.json();
+    assert.equal(p.countryCode, "PT");
+    console.log(`  ${p.name}, ${p.country}`);
+    const q = await asPhone.json();
+    assert.equal(q.countryCode, "NZ");
+    console.log(`  "aoraki mount cook" -> ${q.name}, ${q.country} (${q.lat}, ${q.lon})`);
+    const m = await fetch(`${base}/api/tv/${tvId}/map?lat=38.72&lon=-9.14&zoom=4`, { headers: { Authorization: `Bearer ${secret}` } });
+    assert.equal(m.status, 200);
+    assert.equal(m.headers.get("content-type"), "image/png");
+    console.log(`  map: ${(await m.arrayBuffer()).byteLength} bytes`);
+  }
+}
+
 step("a bad X-Draft is refused (400)");
 assert.equal((await upload(jpeg(100), { "X-Draft": "NOT OK" })).status, 400);
 

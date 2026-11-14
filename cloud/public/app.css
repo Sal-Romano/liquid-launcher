@@ -250,6 +250,50 @@ main {
 .state[data-tone="old"] { color: var(--faint); background: rgba(255, 255, 255, 0.06); }
 
 .as { margin: 22px 0 0; text-align: center; font-size: 14px; color: var(--faint); }
+.as strong { font-weight: 650; color: var(--muted); }
+
+/* ---- where, when, with what: one quiet line under the preview ---- */
+
+.details {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; row-gap: 2px;
+  margin: 11px 6px 0; min-height: 22px; font-size: 14px; color: var(--muted);
+}
+.details .sep { margin: 0 7px; color: var(--faint); }
+.details .loc {
+  border: 0; background: none; padding: 2px 0; font: inherit; color: var(--text);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.details .loc[aria-pressed="false"] { color: var(--faint); }
+.details .none { color: var(--faint); }
+.details .part { white-space: nowrap; }
+
+/* ---- who's sending ---- */
+
+.sheet-wrap {
+  position: fixed; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start;
+  padding: calc(var(--safe-t) + 15vh) calc(var(--safe-r) + 16px) 16px calc(var(--safe-l) + 16px);
+  background: rgba(3, 5, 9, 0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: fadein 0.2s ease-out;
+}
+@keyframes fadein { from { opacity: 0; } }
+.sheet { width: 100%; max-width: 420px; border-radius: var(--sheet); padding: 22px 20px 18px; animation: rise 0.28s var(--ease); }
+.sheet h2 { margin: 0 0 6px; font-size: 21px; font-weight: 650; letter-spacing: -0.01em; position: relative; z-index: 3; }
+.sheet > p { margin: 0 0 16px; color: var(--muted); font-size: 15px; position: relative; z-index: 3; }
+.sheet input {
+  position: relative; z-index: 3; display: block; width: 100%; height: 52px; padding: 0 16px; border-radius: 16px;
+  font: 600 18px/1 inherit; color: var(--text); background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18); outline: none;
+  -webkit-user-select: text; user-select: text;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.sheet input::placeholder { color: var(--faint); font-weight: 500; }
+.sheet input:focus { border-color: rgba(255, 255, 255, 0.55); box-shadow: 0 0 0 4px rgba(140, 170, 255, 0.18); }
+.sheet-hint { min-height: 1.3em; margin: 8px 2px 0; font-size: 13.5px; color: rgba(255, 228, 180, 0.95); position: relative; z-index: 3; }
+.sheet-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 10px; margin-top: 8px; position: relative; z-index: 3; }
+.sheet-actions .primary, .sheet-actions .secondary { height: 52px; font-size: 16.5px; }
 .link { border: 0; background: none; padding: 2px 0; font-size: 14px; font-weight: 600; color: var(--muted); text-decoration: underline dotted rgba(255, 255, 255, 0.4); text-underline-offset: 3px; }
 
 /* ---- the bottom bar: Test on TV, Use this ---- */

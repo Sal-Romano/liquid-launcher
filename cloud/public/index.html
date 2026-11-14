@@ -15,6 +15,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="app.css">
+<script src="exif.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -82,6 +83,8 @@
       </div>
     </div>
 
+    <p id="details" class="details" hidden></p>
+
     <div id="soft" class="soft" role="status" hidden>
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="13.9" r="1.1" fill="currentColor"/></svg>
       <span id="soft-text"></span>
@@ -108,7 +111,7 @@
       <ol id="sent-list" class="glass"></ol>
     </section>
 
-    <p class="as">Sending as <button id="rename" class="link" type="button">this phone</button></p>
+    <p id="as" class="as"></p>
   </section>
 </main>
 
@@ -139,6 +142,19 @@
     </button>
   </div>
 </footer>
+
+<div id="name-sheet" class="sheet-wrap" role="dialog" aria-modal="true" aria-labelledby="name-title" hidden>
+  <form id="name-form" class="sheet glass" novalidate>
+    <h2 id="name-title">Who’s sending?</h2>
+    <p>The TV shows your name with each photo you send.</p>
+    <input id="name-input" type="text" name="name" maxlength="40" autocapitalize="words" autocomplete="given-name" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="Your name" aria-describedby="name-hint">
+    <p id="name-hint" class="sheet-hint" aria-live="polite"></p>
+    <div class="sheet-actions">
+      <button id="name-cancel" class="secondary glass" type="button">Not now</button>
+      <button class="primary" type="submit"><span class="face">Save</span></button>
+    </div>
+  </form>
+</div>
 
 <input id="file" class="offscreen" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
 </body>

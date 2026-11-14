@@ -11,6 +11,9 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import dev.sal.glass.BuildConfig
+import dev.sal.glass.data.Place
+import dev.sal.glass.data.PhotoInfo
+import dev.sal.glass.data.PhotoInfos
 import dev.sal.glass.data.Wallpapers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +30,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -75,7 +80,23 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
     }
 
     private sealed interface Work
-    private class Offer(val id: String, val type: String, val from: String?, val show: Boolean, val test: Boolean, val draft: String?) : Work
+    private class Offer(
+        val id: String, val type: String, val from: String?, val show: Boolean, val test: Boolean, val draft: String?,
+        /** When the relay got it, epoch ms. */
+        val at: Long?,
+        /** What the phone read from the photo before rendering it. */
+        val meta: PhotoInfo?,
+    ) : Work {
+        /** The info card's start for this photo: who sent it, when, and what the phone read from it. */
+        fun info() = (meta ?: PhotoInfo()).copy(from = from, sentAt = at)
+    }
+
+    /** A place lookup through the relay. Unavailable: no relay, no maps key there, or no network; try again later. */
+    sealed interface PlaceAnswer {
+        class Found(val place: Place) : PlaceAnswer
+        object Nowhere : PlaceAnswer
+        object Unavailable : PlaceAnswer
+    }
     private class Keep(val id: String, val draft: String?) : Work
     private class End(val code: Int, val problem: String?, val openFor: Long)
 
@@ -268,6 +289,15 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
                         show = m["show"]?.jsonPrimitive?.booleanOrNull ?: true,
                         test = m.string("mode") == "test",
                         draft = m.string("draft")?.takeIf { DRAFT.matches(it) },
+                        at = (m["at"] as? JsonPrimitive)?.longOrNull,
+                        meta = (m["meta"] as? JsonObject)?.let { meta ->
+                            PhotoInfo(
+                                takenAt = meta.string("takenAt"),
+                                lat = (meta["lat"] as? JsonPrimitive)?.doubleOrNull,
+                                lon = (meta["lon"] as? JsonPrimitive)?.doubleOrNull,
+                                camera = meta.string("camera"),
+                            )
+                        },
                     ),
                 )
             }
@@ -303,6 +333,7 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
             tmp.delete()
         }
         Log.i("Glass", "phone photo ${file.name} (${file.length()} bytes) from ${offer.from ?: "a phone"} in ${SystemClock.elapsedRealtime() - t0} ms")
+        PhotoInfos.put(file.name, offer.info())
         send(message("got", "id" to offer.id))
         val ok = onScreen(offer.id) {
             val earlier = earlierVersions(offer.draft, file)
@@ -331,6 +362,7 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
         }
         Log.i("Glass", "phone test ${offer.id} (${file.length()} bytes) in ${SystemClock.elapsedRealtime() - t0} ms")
         drafts[offer.id] = offer.draft
+        PhotoInfos.put(file.name, offer.info())
         send(message("got", "id" to offer.id))
         val ok = onScreen(offer.id) { screen.preview(file) }
         if (ok) send(message("shown", "id" to offer.id, "visible" to Phone.foreground))
@@ -352,6 +384,7 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
             send(message("failed", "id" to keep.id, "error" to (e.message ?: "could not save it")))
             return
         }
+        PhotoInfos.rename(preview.name, saved.name)
         notice("Saved to your wallpapers", clears = false)
         onScreen(keep.id) { screen.keepPreview(preview, saved, earlierVersions(draft, saved)); true }
         send(message("kept", "id" to keep.id))
@@ -391,6 +424,35 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
             target.parentFile?.mkdirs()
             response.body.byteStream().use { input -> target.outputStream().use { input.copyTo(it, 64 * 1024) } }
         }
+    }
+
+    /** Where [lat], [lon] is, through the relay. */
+    suspend fun place(lat: Double, lon: Double): PlaceAnswer = lookup("lat=$lat&lon=$lon")
+
+    /** Where a place named [query] is ("aoraki mount cook"), through the relay. */
+    suspend fun place(query: String): PlaceAnswer = lookup("q=" + java.net.URLEncoder.encode(query, "UTF-8"))
+
+    private suspend fun lookup(params: String): PlaceAnswer = withContext(Dispatchers.IO) {
+        val base = server ?: return@withContext PlaceAnswer.Unavailable
+        runCatching {
+            val request = Request.Builder().url("$base/api/tv/${keys.tvId}/place?$params").header("Authorization", "Bearer ${keys.secret}").build()
+            http.newCall(request).execute().use { r ->
+                when (r.code) {
+                    200 -> PlaceAnswer.Found(lenient.decodeFromString<Place>(r.body.string()))
+                    404 -> PlaceAnswer.Nowhere
+                    else -> PlaceAnswer.Unavailable.also { Log.w("Glass", "place lookup: the relay answered ${r.code}") }
+                }
+            }
+        }.getOrElse { Log.w("Glass", "place lookup failed: ${it.message}"); PlaceAnswer.Unavailable }
+    }
+
+    /** A small dark map centred on [lat], [lon] (a 1280x720 PNG), through the relay; null if there is none to be had. */
+    suspend fun map(lat: Double, lon: Double, zoom: Int = 4): ByteArray? = withContext(Dispatchers.IO) {
+        val base = server ?: return@withContext null
+        runCatching {
+            val request = Request.Builder().url("$base/api/tv/${keys.tvId}/map?lat=$lat&lon=$lon&zoom=$zoom").header("Authorization", "Bearer ${keys.secret}").build()
+            http.newCall(request).execute().use { r -> if (r.isSuccessful) r.body.bytes() else null }
+        }.getOrNull()
     }
 
     private fun notice(text: String, clears: Boolean) = post {
@@ -437,5 +499,6 @@ class PhoneLink(private val context: Context, private val screen: Screen) {
         val ID = Regex("[a-z0-9]{8,40}")
         /** One per photo chosen on the phone. */
         val DRAFT = Regex("[a-z0-9]{8,32}")
+        val lenient = Json { ignoreUnknownKeys = true }
     }
 }

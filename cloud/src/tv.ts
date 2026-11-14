@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./index";
+import { fetchMap, lookupPlace } from "./maps";
 
 /** SQLite rows top out at 2 MB, so a photo is stored in 1 MiB chunks. */
 const CHUNK = 1 << 20;
@@ -12,6 +13,9 @@ const PENDING_TTL = 14 * 24 * 3600_000;
 const SWEEP_EVERY = 24 * 3600_000;
 /** The TV pings every 25 s; a TV not heard from for this long is offline even if its socket lingers. */
 const ONLINE_WITHIN = 70_000;
+
+/** Place names and maps from Google are kept this long, as its terms allow, then fetched again. */
+const MAPS_CACHE_FOR = 30 * 24 * 3600_000;
 
 const KEY = /^[A-Za-z0-9_-]{16,128}$/;
 /** One per photo chosen on the phone: a later "keep" with the same draft replaces the earlier one. */
@@ -41,6 +45,8 @@ type Upload = {
   visible: number | null;
   mode: Mode;
   draft: string | null;
+  /** What the phone read from the photo before rendering it (see [cleanMeta] in index.ts), as JSON. */
+  meta: string | null;
 };
 
 /** What a hibernating socket remembers: when its client last said something other than "ping". */
@@ -74,6 +80,9 @@ export class Tv extends DurableObject<Env> {
     const columns = new Set(this.sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('upload')").toArray().map((c) => c.name));
     if (!columns.has("mode")) this.sql.exec("ALTER TABLE upload ADD COLUMN mode TEXT NOT NULL DEFAULT 'keep'");
     if (!columns.has("draft")) this.sql.exec("ALTER TABLE upload ADD COLUMN draft TEXT");
+    if (!columns.has("meta")) this.sql.exec("ALTER TABLE upload ADD COLUMN meta TEXT");
+    this.sql.exec("CREATE TABLE IF NOT EXISTS place_cache (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)");
+    this.sql.exec("CREATE TABLE IF NOT EXISTS map_cache (k TEXT PRIMARY KEY, data BLOB NOT NULL, at INTEGER NOT NULL)");
     // Both kinds of client ping every 25 s; the runtime answers without waking the object.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -219,7 +228,9 @@ export class Tv extends DurableObject<Env> {
    * A phone sends a photo. The Worker has read the body (and refused anything over the limit
    * before reading); [from] is the raw X-From header, [show] false for X-Show: later.
    */
-  async receive(key: string | null, body: ArrayBuffer, from: string | null, show: boolean, mode: Mode, draft: string | null): Promise<Reply> {
+  async receive(
+    key: string | null, body: ArrayBuffer, from: string | null, show: boolean, mode: Mode, draft: string | null, meta: string | null,
+  ): Promise<Reply> {
     const access = await this.phoneAccess(key);
     if (access !== "ok") return denied(access);
     // A test is for looking at now; it never waits for a TV that is off.
@@ -242,11 +253,12 @@ export class Tv extends DurableObject<Env> {
       visible: null,
       mode,
       draft,
+      meta,
     };
     this.ctx.storage.transactionSync(() => {
       this.sql.exec(
-        "INSERT INTO upload (id, at, sender, type, bytes, show, state, mode, draft) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
-        u.id, u.at, u.sender, u.type, u.bytes, u.show, u.mode, u.draft,
+        "INSERT INTO upload (id, at, sender, type, bytes, show, state, mode, draft, meta) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
+        u.id, u.at, u.sender, u.type, u.bytes, u.show, u.mode, u.draft, u.meta,
       );
       for (let seq = 0, off = 0; off < body.byteLength; seq++, off += CHUNK) {
         this.sql.exec("INSERT INTO chunk (id, seq, data) VALUES (?, ?, ?)", u.id, seq, body.slice(off, off + CHUNK));
@@ -286,6 +298,65 @@ export class Tv extends DurableObject<Env> {
     const text = JSON.stringify({ t: "keep", id, draft: u.draft });
     for (const tv of this.ctx.getWebSockets("tv")) sendQuietly(tv, text);
     return { status: 202, body: { id, state: u.state } };
+  }
+
+  /** Who [token] is: this TV (its secret), a phone (the send key), or nobody. For the place and map lookups. */
+  async whoIs(token: string | null): Promise<"tv" | "phone" | null> {
+    if (await this.isTv(token)) return "tv";
+    return (await this.phoneAccess(token)) === "ok" ? "phone" : null;
+  }
+
+  /**
+   * Where a photo was taken: from its coordinates, or from a name ([q], a wallpaper's file name in
+   * words). For the TV or a phone of this TV; cached here for 30 days.
+   */
+  async place(token: string | null, lat: number | null, lon: number | null, q: string | null): Promise<Reply> {
+    if (!(await this.whoIs(token))) return reply(401, "not this TV's");
+    const key = this.env.GOOGLE_MAPS_KEY;
+    if (!key) return reply(503, "no maps key on the relay");
+    const reverse = lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+    const query = (q ?? "").trim().toLowerCase().replace(/\s+/g, " ").slice(0, 120);
+    if (!reverse && !query) return reply(400, "lat and lon, or q");
+    const k = reverse ? `ll:${lat!.toFixed(4)},${lon!.toFixed(4)}` : `q:${query}`;
+    const hit = this.sql.exec<{ v: string; at: number }>("SELECT v, at FROM place_cache WHERE k = ?", k).toArray()[0];
+    if (hit && Date.now() - hit.at < MAPS_CACHE_FOR) return JSON.parse(hit.v) as Reply;
+    const found = await lookupPlace(key, reverse ? lat : null, reverse ? lon : null, reverse ? null : query);
+    const out: Reply = found.place
+      ? { status: 200, body: found.place as unknown as Record<string, unknown> }
+      : reply(found.status, found.error ?? "lookup failed");
+    if (found.status === 200 || found.status === 404) {
+      this.sql.exec("DELETE FROM place_cache WHERE at < ?", Date.now() - MAPS_CACHE_FOR);
+      this.sql.exec(
+        "INSERT INTO place_cache (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at",
+        k, JSON.stringify(out), Date.now(),
+      );
+    }
+    return out;
+  }
+
+  /** A small dark map centred on [lat], [lon] (see maps.ts), a PNG; cached here for 30 days. */
+  async map(token: string | null, lat: number | null, lon: number | null, zoom: number | null): Promise<Reply | Photo> {
+    if (!(await this.whoIs(token))) return reply(401, "not this TV's");
+    const key = this.env.GOOGLE_MAPS_KEY;
+    if (!key) return reply(503, "no maps key on the relay");
+    if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return reply(400, "lat and lon");
+    // Two decimals is about a kilometre: invisible at these zooms, and nearby photos share a map.
+    const la = Math.round(lat * 100) / 100;
+    const lo = Math.round(lon * 100) / 100;
+    const z = Math.min(8, Math.max(2, Math.round(zoom ?? 4)));
+    const k = `${la.toFixed(2)},${lo.toFixed(2)},${z}`;
+    const hit = this.sql.exec<{ data: ArrayBuffer; at: number }>("SELECT data, at FROM map_cache WHERE k = ?", k).toArray()[0];
+    if (hit && Date.now() - hit.at < MAPS_CACHE_FOR) return { type: "image/png", bytes: hit.data };
+    const got = await fetchMap(key, la, lo, z);
+    if (!got.bytes) return reply(got.status, got.error ?? "no map");
+    if (got.bytes.byteLength < CHUNK * 1.9) {
+      this.sql.exec("DELETE FROM map_cache WHERE at < ?", Date.now() - MAPS_CACHE_FOR);
+      this.sql.exec(
+        "INSERT INTO map_cache (k, data, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET data = excluded.data, at = excluded.at",
+        k, got.bytes, Date.now(),
+      );
+    }
+    return { type: "image/png", bytes: got.bytes };
   }
 
   // ---- housekeeping ----
@@ -381,7 +452,13 @@ export class Tv extends DurableObject<Env> {
 }
 
 function offer(u: Upload, show: boolean) {
-  return { t: "wallpaper", id: u.id, type: u.type, bytes: u.bytes, from: u.sender, at: u.at, show, mode: u.mode, draft: u.draft };
+  let meta: unknown = null;
+  try {
+    meta = u.meta ? JSON.parse(u.meta) : null;
+  } catch {
+    // Stored by this code, so this does not happen; a photo without its details is still a photo.
+  }
+  return { t: "wallpaper", id: u.id, type: u.type, bytes: u.bytes, from: u.sender, at: u.at, show, mode: u.mode, draft: u.draft, meta };
 }
 
 function publicUpload(u: Upload) {
