@@ -191,6 +191,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
                 pending = "Starting $name…"
                 scope.launch(Dispatchers.IO) {
                     val problem = callHook(tile.url, name)
+                    Log.i("Glass", "hook ${tile.id}: ${problem ?: "ok"}")
                     withContext(Dispatchers.Main) { pending = null; toast = problem }
                 }
             }
