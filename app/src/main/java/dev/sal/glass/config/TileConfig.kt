@@ -122,6 +122,14 @@ enum class SoundMode { Glass, System, Off }
 @Serializable
 data class SoundConfig(val mode: SoundMode = SoundMode.Glass)
 
+/**
+ * How long the launcher keeps the TV awake while it is in front, in minutes: a photo frame should
+ * not count as inactivity. 0 = always; -1 = Fire TV decides (its own timeout, 21 min on the Hisense).
+ * After the time is up without a key press the flag drops and Fire TV's timeout takes over.
+ */
+@Serializable
+data class AwakeConfig(val minutes: Int = 0)
+
 /** How many steps the volume keys move through (the TV has 100). 0 = System: Fire OS keeps its own popup. */
 @Serializable
 data class VolumeConfig(val levels: Int = 20)
@@ -137,6 +145,7 @@ data class LauncherConfig(
     val glass: GlassConfig = GlassConfig(),
     val sound: SoundConfig = SoundConfig(),
     val volume: VolumeConfig = VolumeConfig(),
+    val awake: AwakeConfig = AwakeConfig(),
     /** Display names by package for the All apps grid, for apps whose own label is wrong or ambiguous. A renamed app keeps the place its own name sorted it to. */
     val labels: Map<String, String> = emptyMap(),
 ) {

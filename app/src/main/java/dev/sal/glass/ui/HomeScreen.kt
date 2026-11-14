@@ -41,6 +41,7 @@ import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
 import dev.sal.glass.config.SoundMode
+import dev.sal.glass.config.AwakeConfig
 import dev.sal.glass.config.VolumeConfig
 import dev.sal.glass.config.Tile
 import dev.sal.glass.data.Apps
@@ -102,6 +103,13 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, wakeSignal: Long) {
     }
     val view = LocalView.current
     LaunchedEffect(Unit) { Sounds.init(context) }
+    // A photo frame is not inactivity: hold the screen on while we are in front, for as long as
+    // configured since the last key. Fire TV's own timeout (21 min on the Hisense) resumes after.
+    LaunchedEffect(config.awake.minutes, lastKeyAt) {
+        val minutes = config.awake.minutes
+        view.keepScreenOn = minutes >= 0
+        if (minutes > 0) { delay(minutes * 60_000L); view.keepScreenOn = false }
+    }
     LaunchedEffect(config.sound.mode) {
         Sounds.mode = config.sound.mode
         // The stock click comes through the view's sound effects; ours replace it or nothing does.
@@ -268,6 +276,7 @@ private fun dockLuma(thumb: android.graphics.Bitmap): Float {
 }
 
 private val volumeLevels = listOf(10, 20, 25, 50, 0)
+private val awakeMinutes = listOf(0, 60, 180, 360, -1)
 
 private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<SettingRow> {
     val intervals = listOf(30, 60, 120, 300, 900)
@@ -294,6 +303,9 @@ private fun settingsRows(store: ConfigStore, engine: WallpaperEngine): List<Sett
         SettingRow("Sounds", listOf("Glass", "System", "Off"),
             { store.config.sound.mode.ordinal },
             { i -> store.update { c -> c.copy(sound = c.sound.copy(mode = SoundMode.entries[i])) } }),
+        SettingRow("Stay awake", listOf("Always", "1 h", "3 h", "6 h", "Fire TV decides"),
+            { awakeMinutes.indexOf(store.config.awake.minutes).coerceAtLeast(0) },
+            { i -> store.update { c -> c.copy(awake = AwakeConfig(minutes = awakeMinutes[i])) } }),
         SettingRow("Volume levels", listOf("10", "20", "25", "50", "System"),
             { volumeLevels.indexOf(store.config.volume.levels).coerceAtLeast(0) },
             { i -> store.update { c -> c.copy(volume = VolumeConfig(levels = volumeLevels[i])) } }),
