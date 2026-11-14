@@ -35,6 +35,10 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
   right edge (CGWarpMouseCursorPosition), where no Dock, menu bar or hot corner opens and the
   arrow is drawn almost off screen; left at the bottom edge it held the Dock open over the game.
   Dolphin is also started with `CursorVisibility` 0 (Never) for the pointer over the game.
+  Moving the pointer is not mouse movement, so it does not send a Dock that is already up back
+  down. What keeps the Dock off the game is `defaults write com.apple.dock autohide-delay
+  -float 999999` (then `killall Dock`): the Dock waits that long before sliding up over a
+  full-screen app. The desktop Dock does not auto-hide, so it is unaffected.
 
 `/home` sends the TV back to the launcher, `/quit` quits Dolphin and goes home, `/status` reports
 (running, paused, session, what the TV shows, the bar). State lives in `state.json` next to

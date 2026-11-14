@@ -243,7 +243,9 @@ cg.CGWarpMouseCursorPosition(P(b.x + b.w - 1, b.y + b.h / 2))
 def park_cursor():
     """Nobody uses a mouse with the Wii: put the pointer at the middle of the right edge, where no
     Dock, menu bar or hot corner opens and the arrow is drawn almost entirely off screen. Left at
-    the bottom edge it held the Dock open over the game (2026-11-14)."""
+    the bottom edge it held the Dock open over the game (2026-11-14). Moving it this way is not
+    mouse movement, so a Dock already up stays up; the Dock's own delay (README) is what keeps it
+    down, and parking before the game shows keeps the pointer off the edges to begin with."""
     as_user("/usr/bin/python3", "-c", PARK)
 
 
@@ -322,6 +324,7 @@ def _play(t0, up_by, switch_by):
             return {"ok": False, "error": "the Mac is still starting up"}
         time.sleep(0.5)
     wake()
+    park_cursor()  # before the game is on screen, so the pointer is never at an edge in full screen
     pid = dolphin()
     if pid and not batch(pid) and not frozen(pid) and not busy(pid):
         # A Dolphin window left open (macOS reopens apps at login), not a Wii: replace it.
@@ -381,8 +384,8 @@ def tick():
         save(s)
         if frozen(pid):
             wake()
-            resume(pid)
             park_cursor()
+            resume(pid)
         return
     if not s.get("session"):
         bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
