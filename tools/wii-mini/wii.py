@@ -38,8 +38,13 @@ def tv_key(code):
 def running():
     return sh("pgrep", "-x", CFG["app"]).returncode == 0
 
+def wake():
+    """Nudge the Mac awake: a user-activity assertion lights the display if it had gone dark."""
+    subprocess.Popen(["launchctl", "asuser", UID, "sudo", "-u", USER, "caffeinate", "-u", "-t", "8"])
+
 def play():
     t0 = time.time()
+    wake()
     was = running()
     as_user("open", "-a", CFG["app"])
     while not running() and time.time() - t0 < 15:

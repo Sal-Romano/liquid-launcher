@@ -12,6 +12,9 @@ Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
   scanning, analytics declined, Wiimote 1 = real remote over the Mac's Bluetooth.
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
+- Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,
+  screensaver off, auto-login as sal (FileVault off), so it is always there and its display never
+  goes dark. `/play` also nudges it awake first (`caffeinate -u`) in case it did.
 - `wii.py` in ~/Library/Application Support/wii, run by the **system** launch daemon
   `/Library/LaunchDaemons/dev.sal.wii.plist` (HOME and WII_UID set), log in ~/Library/Logs/wii.log.
 
