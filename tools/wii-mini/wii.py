@@ -9,11 +9,15 @@ The Wii behaves like an app on the TV:
   Mac's input while the Wii Menu loads.
 - Leaving pauses it. While Dolphin runs, a watcher asks the TV every 2 s what it is showing.
   When it has shown something else for a few seconds (Home, another app or input, the TV
-  asleep), Dolphin is frozen exactly where it was. When the TV shows this Mac again, however it
-  got there, Dolphin thaws.
+  asleep), Finder is brought forward and Dolphin, started with pause-on-focus-loss, pauses its
+  own emulation: a real pause, its window still answers, so the pointer over it over Screen
+  Sharing is a pointer and not a spinning wheel (freezing the process from outside, as at first,
+  did that). When the TV shows this Mac again, however it got there, Dolphin is brought forward
+  and resumes.
 - While someone is using this Mac over Screen Sharing (a session connected and its pointer
-  moved in the last minute), Dolphin is never left frozen under them: it does not pause, and a
-  paused one thaws. A session merely left open on a laptop does not count.
+  moved in the last minute), the Wii is not paused from here; clicking Dolphin wakes it the way
+  Dolphin does, and once they have left it alone for a minute it is paused again. A session
+  merely left open on a laptop does not count.
 - After twelve hours paused, Dolphin quits. Anything not saved in the game is lost, as when a
   real Wii is switched off.
 - /play has a deadline: the Wii up within 15 s and the TV switched by 22 s, or it answers with
@@ -43,8 +47,11 @@ CFG = {
     "app": "Dolphin",
     # No Dolphin UI, fullscreen whatever the GUI says, no mouse pointer over the game
     # (CursorVisibility 0 = Never), straight into the Wii System Menu.
+    # PauseOnFocusLost: Dolphin pauses itself when its window loses focus and resumes when it gets
+    # it back (RenderWidget.cpp); that is how the Wii is paused.
     "boot": ["-b", "-C", "Dolphin.Display.Fullscreen=True", "-C", "Dolphin.Interface.CursorVisibility=0",
-             "-n", "0000000100000002"],
+             "-C", "Dolphin.Interface.PauseOnFocusLost=True", "-n", "0000000100000002"],
+    "bundle": "org.dolphin-emu.dolphin",
     "poll_s": 2.0,
     "away_s": 4.0,             # the TV shows something else this long: the Wii pauses
     "lost_s": 120.0,           # the TV does not answer this long (switched off): the Wii pauses
@@ -211,19 +218,6 @@ def frozen(pid):
     return "T" in ps(pid, "stat")
 
 
-def batch(pid):
-    args = " " + ps(pid, "args") + " "
-    return " -b " in args or " --batch " in args
-
-
-def busy(pid):
-    """A Dolphin that is emulating something uses real CPU; one showing its game list does not."""
-    try:
-        return float(ps(pid, "%cpu") or 0) >= 8.0
-    except ValueError:
-        return True
-
-
 def wake():
     """Light the Mac's display if it had gone dark."""
     subprocess.Popen(["launchctl", "asuser", UID, "sudo", "-u", USER, "caffeinate", "-u", "-t", "8"])
@@ -295,19 +289,37 @@ def console_user():
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def frontmost():
+    """Bundle id of the app in front in the desktop session, or "" if unknown."""
+    asn = as_user("lsappinfo", "front").stdout.strip()
+    if not asn:
+        return ""
+    m = re.search(r'bundleID="([^"]+)"', as_user("lsappinfo", "info", "-only", "bundleid", asn).stdout)
+    return m.group(1) if m else ""
+
+
+def dolphin_front():
+    return frontmost() == CFG["bundle"]
+
+
 def pause(pid):
-    """The Wii Remotes off with the bar, then Dolphin frozen exactly where it was."""
+    """The Wii Remotes off with the bar, then Finder brought forward: Dolphin loses focus and
+    pauses its own emulation (pause-on-focus-loss). If something else is already in front,
+    Dolphin has paused itself already and nobody's app is pushed aside."""
     bar(False)
-    time.sleep(0.5)  # let Dolphin notice the remotes going before it stops
-    os.kill(pid, signal.SIGSTOP)
+    if dolphin_front():
+        as_user("open", "-a", "Finder")
     s = state()
-    s["paused_at"] = time.time()
+    s.setdefault("paused_at", time.time())
     save(s)
     log("paused", pid)
 
 
 def resume(pid):
-    os.kill(pid, signal.SIGCONT)
+    """Dolphin brought forward: it gets focus back and resumes its emulation."""
+    if frozen(pid):
+        os.kill(pid, signal.SIGCONT)  # frozen by an older version of this listener
+    as_user("open", "-a", CFG["app"])
     bar(True)
     s = state()
     s.pop("paused_at", None)
@@ -367,10 +379,6 @@ def _play(t0, up_by, switch_by):
     wake()
     park_cursor()  # before the game is on screen, so the pointer is never at an edge in full screen
     pid = dolphin()
-    if pid and not batch(pid) and not frozen(pid) and not busy(pid):
-        # A Dolphin window left open (macOS reopens apps at login), not a Wii: replace it.
-        stop(pid)
-        pid = None
     started = pid is None
     if started:
         as_user("open", "-a", CFG["app"], "--args", *CFG["boot"])
@@ -380,10 +388,8 @@ def _play(t0, up_by, switch_by):
         if pid is None:
             log("play: Dolphin did not start in time")
             return {"ok": False, "error": "Dolphin didn't start"}
-    elif frozen(pid):
-        resume(pid)
     else:
-        as_user("open", "-a", CFG["app"])  # to the front
+        resume(pid)  # paused or not: Dolphin to the front, which resumes a paused Wii
     park_cursor()
     bar(True)
     s = state()
@@ -418,12 +424,14 @@ def tick():
         else:
             bar(False)  # nothing to play: the remotes off, the mantle dark
         return
+    if frozen(pid):
+        os.kill(pid, signal.SIGCONT)  # frozen by an older version of this listener; never again
     view = tv_view()
     now = time.time()
     if view == "mac":
         s["session"], s["last_mac"] = True, now  # also when the TV's own input menu got here
         save(s)
-        if frozen(pid):
+        if s.get("paused_at"):  # only a Wii this listener paused: never grab the screen otherwise
             wake()
             park_cursor()
             resume(pid)
@@ -431,17 +439,18 @@ def tick():
     if not s.get("session"):
         bar(True)  # Dolphin opened on the Mac itself (Screen Sharing, a keyboard): leave it be
         return
-    if frozen(pid):
+    if s.get("paused_at"):
         if mac_in_use():
-            log("thawing: someone is using the Mac over Screen Sharing")
-            resume(pid)
-        elif now - s.get("paused_at", now) >= CFG["quit_after_s"]:
+            return  # someone at the Mac: clicking Dolphin wakes it, as Dolphin does
+        if dolphin_front():
+            pause(pid)  # woken over Screen Sharing, then left alone: pause it again
+        elif now - s["paused_at"] >= CFG["quit_after_s"]:
             stop(pid)
         return
     away = now - s.get("last_mac", now)
     if (view == "away" and away >= CFG["away_s"]) or (view is None and away >= CFG["lost_s"]):
         if mac_in_use():
-            return  # someone is using the Mac over Screen Sharing: do not freeze Dolphin under them
+            return  # someone is using the Mac over Screen Sharing: do not pause the Wii under them
         pause(pid)
 
 
@@ -470,7 +479,7 @@ def quit_():
 def status():
     s = state()
     pid = dolphin()
-    return {"ok": True, "running": pid is not None, "paused": bool(pid and frozen(pid)),
+    return {"ok": True, "running": pid is not None, "paused": bool(pid and s.get("paused_at")),
             "session": bool(s.get("session")), "tv": tv_view(), "bar_on": s.get("bar_on"),
             "bar_where": s.get("bar_where")}
 

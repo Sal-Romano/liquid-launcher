@@ -14,19 +14,25 @@ the TV, `wii.py` makes the Wii behave like an app on the TV:
 - **Leaving pauses it.** While Dolphin runs, a watcher asks the TV every 2 s what it shows
   (`dumpsys power`, `window` and `tv_input`; HDMI 2 is the session `HdmiInputService/HW3`).
   After 4 s on anything else (Home, another app or input, the TV asleep), or 2 min with the TV
-  not answering (switched off), Dolphin is frozen with SIGSTOP. When the TV shows the Mac again,
-  by the tile or by the TV's own input menu, it gets SIGCONT. Measured: paused 3-5 s after Home,
-  resumed 5 s after switching back by the input menu.
-- **Not while someone is at the Mac.** While someone is using the Mac over Screen Sharing (VNC,
-  port 5900): a session connected *and* its pointer moved in the last minute, Dolphin is never
-  left frozen under them: it does not pause, and a paused one thaws. (2026-11-14: a paused
-  Dolphin looked hung over Screen Sharing and was force-quit twice.) A session merely left open
-  on a laptop does not count: at first it did, and the Wii never paused. Note that an open
-  session steers the Mac's pointer from the laptop; parked at the bottom edge of the Screen
-  Sharing window, it holds the Dock open over the game.
-- **After twelve hours paused it quits** (SIGCONT, then SIGTERM, which Dolphin honours cleanly;
-  SIGKILL after 10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
+  not answering (switched off), Finder is brought forward and Dolphin, started with
+  `Interface.PauseOnFocusLost`, pauses its own emulation (RenderWidget.cpp pauses on
+  WindowDeactivate and resumes on WindowActivate). When the TV shows the Mac again, by the tile
+  or by the TV's own input menu, Dolphin is brought forward and resumes. Only a Wii this
+  listener paused is brought forward, so it never grabs the screen from someone using the Mac.
+  Measured on the TV: paused about 3 s after Home, resumed in 1.7 s by the tile; Dolphin at
+  about 43 % CPU running and 4 % paused. At first the process was frozen with SIGSTOP instead
+  (0 % CPU), but a frozen app shows a spinning wheel to anyone pointing at it over Screen
+  Sharing, and it was force-quit twice that way.
+- **After twelve hours paused it quits** (SIGTERM, which Dolphin honours cleanly; SIGKILL after
+  10 s if not). Unsaved game progress is lost, as with a real Wii switched off.
   If Dolphin closes while the TV shows it (Wii Menu, power off), the TV goes back to the launcher.
+- **Not while someone is at the Mac.** While someone is using the Mac over Screen Sharing (VNC,
+  port 5900), meaning a session connected *and* its pointer moved in the last minute, the Wii
+  is not paused from here; clicking Dolphin wakes it the way Dolphin does, and once it has been
+  left alone for a minute it is paused again. A session merely left open on a laptop does not
+  count: at first it did, and the Wii never paused. Note that an open session steers the Mac's
+  pointer from the laptop; parked at the bottom edge of the Screen Sharing window, it holds the
+  Dock open over the game.
 - **The Wii Remote bar** (a Mayflash DolphinBar) gets power only while Dolphin runs unpaused, so
   the Wii Remotes switch off on every pause (press a button to reconnect) and the bar's glow
   goes dark. That needs a USB hub with per-port power switching between the Mac and the bar:
@@ -59,8 +65,9 @@ Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
   `./configure --disable-shared --enable-static`, then `cc uhubctl.c libusb-1.0.a -framework
   IOKit -framework CoreFoundation -framework Security -lobjc`, in a path without spaces.
 - macOS does not reopen apps at login (`defaults -currentHost write com.apple.loginwindow
-  TALLogoutSavesState -bool false`), so a reboot does not leave a Dolphin window waiting; one that
-  is there anyway and idle gets replaced by the Wii Menu on the next `/play`.
+  TALLogoutSavesState -bool false`), so a reboot does not leave a Dolphin window waiting. One
+  that is open anyway (opened by hand) is brought forward as it is: the listener never closes a
+  Dolphin it did not start, since a self-paused game looks just as idle as a game list.
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
 - Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,
