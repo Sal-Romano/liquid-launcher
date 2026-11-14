@@ -13,8 +13,18 @@ Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
 - Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,
-  screensaver off, auto-login as sal (FileVault off), so it is always there and its display never
-  goes dark. `/play` also nudges it awake first (`caffeinate -u`) in case it did.
+  screensaver off, so it is always there and its display never goes dark. `/play` also nudges it
+  awake first (`caffeinate -u`) in case it did.
+- Auto-login as sal, unlocked, with no keyboard ever attached (FileVault off):
+  - `autoLoginUser = sal` in /Library/Preferences/com.apple.loginwindow, plus `/etc/kcpassword`
+    (root, 600): the account password XOR-obfuscated, which is how macOS auto-login works and is
+    reversible by anyone with root. `sudo sysadminctl -autologin set` fails over SSH with
+    `SACSetAutoLoginPassword error:22`, so the file was written directly.
+  - `autoLoginUserScreenLocked` must be **absent** from that plist. At 1 (it was, 2026-11-14),
+    macOS auto-logs in and then locks the screen, and the lock screen turns the display off after
+    about 30 s, so the TV shows a sign-in screen or "no signal".
+  - Screen lock off: `sysadminctl -screenLock off -password …`, run as sal.
+  - Check: after a reboot, `ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked` shows nothing.
 - `wii.py` in ~/Library/Application Support/wii, run by the **system** launch daemon
   `/Library/LaunchDaemons/dev.sal.wii.plist` (HOME and WII_UID set), log in ~/Library/Logs/wii.log.
 

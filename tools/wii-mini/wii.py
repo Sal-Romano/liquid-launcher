@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CFG = {"tv": "192.168.1.152:5555", "hdmi_key": 244, "port": 8766, "app": "Dolphin"}  # 244 = KEYCODE_TV_INPUT_HDMI_2
 ADB = os.path.expanduser("~/Library/Android/platform-tools/adb")
-USER = os.environ.get("WII_USER", "sal"); UID = os.environ.get("WII_UID", "501")
+USER = os.environ.get("WII_USER", "sal"); UID = os.environ.get("WII_UID", "502")
 def as_user(*args):  # run in the console user's GUI session; we are a system daemon
     return sh("launchctl", "asuser", UID, "sudo", "-u", USER, *args)
 
@@ -42,8 +42,15 @@ def wake():
     """Nudge the Mac awake: a user-activity assertion lights the display if it had gone dark."""
     subprocess.Popen(["launchctl", "asuser", UID, "sudo", "-u", USER, "caffeinate", "-u", "-t", "8"])
 
+def console_user():
+    r = sh("stat", "-f", "%Su", "/dev/console")
+    return r.stdout.strip() if r.returncode == 0 else ""
+
 def play():
     t0 = time.time()
+    # Right after a boot the daemon is up before the auto-login finishes: give the desktop a moment.
+    while console_user() in ("", "root") and time.time() - t0 < 40:
+        time.sleep(0.5)
     wake()
     was = running()
     as_user("open", "-a", CFG["app"])
