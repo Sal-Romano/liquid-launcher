@@ -57,7 +57,11 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     var empty by mutableStateOf(false); private set
     /** Every photo in the rotation, newest first: the Wallpapers screen's grid. */
     var library by mutableStateOf<List<File>>(emptyList()); private set
-    /** Crossfade progress 0..1 and Ken Burns zoom, published by the layer so the glass can follow. */
+    /**
+     * Crossfade progress 0..1 and the Ken Burns zoom of [current], animated by the wallpaper layer
+     * and read by it and the glass. Both go back to their rest values in the same step as the swap
+     * at the end of a crossfade ([onTransitionDone]).
+     */
     var fade by mutableStateOf(0f)
     var zoom by mutableStateOf(1f)
 
@@ -88,7 +92,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
             rescan()
             val first = decodeNext()
             // A photo from a phone may have gone up while this one decoded.
-            if (current == null) current = first else first?.let { queue.addFirst(it.file) }
+            if (current == null) { current = first; zoom = 1f } else first?.let { queue.addFirst(it.file) }
             prefetch()
             restartTicker()
             // Pre-render every photo's blurs once, after the first frame is up, so later
@@ -203,7 +207,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
 
     /** Puts [frame] up next: at once if nothing is on screen, else with the crossfade. */
     private fun put(frame: Frame) {
-        if (current == null) { current = frame; return }
+        if (current == null) { current = frame; zoom = 1f; return }
         // A prefetched photo steps aside and comes after this one.
         next?.let { n -> if (n.file != frame.file && n.file in known) queue.addFirst(n.file) }
         next = frame
@@ -292,8 +296,13 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
             while (history.size > 50) history.removeFirst()
         }
         goingBack = false
+        // The photo that faded in takes the screen as it was drawn during the fade: not zoomed
+        // yet, nothing fading. All in one go, so no frame shows it at the old photo's zoom (the
+        // Ken Burns push-in of the photo leaving reached 6 %, which flashed as a jump at the end).
         current = n
         next = null
+        fade = 0f
+        zoom = 1f
         transitioning = false
         transitionEnded?.complete(Unit)
         transitionEnded = null

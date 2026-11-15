@@ -123,28 +123,31 @@ vec2 refractOffset(vec3 n, float eta, float depth) {
     return r.xy * depth / max(abs(r.z), 1e-3);
 }
 // Screen px → photo UV, undoing the Ken Burns zoom so the glass stays registered to the photo.
+// Only the photo on screen (A) is zoomed; the one fading in (B) is drawn unzoomed by the
+// wallpaper layer and starts its own push-in once it is A, so it is sampled unzoomed here too.
 vec2 photoUv(vec2 px) {
     vec2 uv = px / uRes;
     return (uv - 0.5) / uZoom + 0.5;
 }
+vec2 incomingUv(vec2 px) { return px / uRes; }
 // Outside a crossfade uMix is exactly 0, and the incoming photo is not fetched at all.
-vec3 photoAt(vec2 uv, float lod) {
-    vec3 a = textureLod(uSharpA, uv, lod).rgb;
+vec3 sharpAt(vec2 px, float lod) {
+    vec3 a = textureLod(uSharpA, photoUv(px), lod).rgb;
     if (uMix <= 0.0) return a;
-    return mix(a, textureLod(uSharpB, uv, lod).rgb, uMix);
+    return mix(a, textureLod(uSharpB, incomingUv(px), lod).rgb, uMix);
 }
-vec3 sharpAt(vec2 px, float lod) { return photoAt(photoUv(px), lod); }
 // The mirrored surroundings: a lookup past the photo's edge folds back inside (mirror wrap)
 // instead of smearing the last texel row along a rim that sits near the screen edge.
+vec2 mirrored(vec2 uv) { return 1.0 - abs(1.0 - abs(uv)); }
 vec3 envAt(vec2 px, float lod) {
-    vec2 uv = photoUv(px);
-    return photoAt(1.0 - abs(1.0 - abs(uv)), lod);
+    vec3 a = textureLod(uSharpA, mirrored(photoUv(px)), lod).rgb;
+    if (uMix <= 0.0) return a;
+    return mix(a, textureLod(uSharpB, mirrored(incomingUv(px)), lod).rgb, uMix);
 }
 vec3 deepAt(vec2 px) {
-    vec2 uv = photoUv(px);
-    vec3 a = texture(uDeepA, uv).rgb;
+    vec3 a = texture(uDeepA, photoUv(px)).rgb;
     if (uMix <= 0.0) return a;
-    return mix(a, texture(uDeepB, uv).rgb, uMix);
+    return mix(a, texture(uDeepB, incomingUv(px)).rgb, uMix);
 }
 // Soft focus: four taps at the mip level, half a texel apart in a diamond, so the chain's box
 // steps average into a smooth blur instead of banding on hard verticals.
@@ -156,7 +159,7 @@ vec3 softAt(vec2 px, float lod) {
 // The lamp in screen px: the photo's light, through the Ken Burns zoom, in front of the glass by
 // just under half a screen width. Near enough that every panel sees it from its own angle.
 vec3 lampDir(vec2 px) {
-    vec2 lampPx = ((uLamp - 0.5) * uZoom + 0.5) * uRes;
+    vec2 lampPx = ((uLamp - 0.5) * mix(uZoom, 1.0, uMix) + 0.5) * uRes;
     return normalize(vec3(lampPx, uRes.x * 0.45) - vec3(px, 0.0));
 }
 

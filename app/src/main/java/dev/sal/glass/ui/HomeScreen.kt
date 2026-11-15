@@ -7,7 +7,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -292,11 +291,19 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
             // grid sits on the photo alone instead of over the home chrome.
             val chrome = overlay != Overlay.AllApps && overlay != Overlay.Drop && overlay != Overlay.Wallpapers && overlay != Overlay.Info
             val clockAlpha by animateFloatAsState(if (chrome) 1f else 0f, tween(220), label = "clockAlpha")
-            // Clock block centred at 43% of the height.
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = clockAlpha }, contentAlignment = Alignment.Center) {
-                Clock(config.clock.size, config.clock.hourFormat, Modifier.offset(y = (-0.07f * 540).dp))
-            }
-            // Network state and the settings button, top right, inside the overscan margin.
+            // The clock in the top-left corner, inside the overscan margin. Its halo is stronger
+            // over a bright corner, following the photo that fades in.
+            val behindClock = if (engine.transitioning) engine.next else engine.current
+            val cornerBright = remember(behindClock) { behindClock?.let { cornerLuma(it.thumb) } ?: 0.5f }
+            val clockGlow = animateFloatAsState(cornerBright, tween(1200), label = "clockGlow")
+            Clock(
+                config.clock.size,
+                config.clock.hourFormat,
+                glow = { clockGlow.value },
+                alpha = { clockAlpha },
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 18.dp, start = 40.dp),
+            )
+            // Network state, info and the settings button, top right, inside the overscan margin.
             TopRight(
                 visible = dockVisible && chrome && (overlay == Overlay.None || overlay == Overlay.Folder),
                 onSettings = { overlay = Overlay.Settings },
@@ -361,6 +368,17 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
             Toast(toast ?: pending, sticky = toast == null && pending != null, solid = !chrome) { toast = null }
         }
     }
+}
+
+/** 1 when the photo is bright behind the clock in the top-left corner (sky, snow), 0 when dark, with a soft knee. */
+private fun cornerLuma(thumb: android.graphics.Bitmap): Float {
+    var sum = 0f; var n = 0
+    val x0 = (thumb.width * 0.03f).toInt(); val x1 = (thumb.width * 0.30f).toInt().coerceAtMost(thumb.width - 1)
+    val y0 = (thumb.height * 0.03f).toInt(); val y1 = (thumb.height * 0.28f).toInt().coerceAtMost(thumb.height - 1)
+    var y = y0
+    while (y <= y1) { var x = x0; while (x <= x1) { val c = thumb.getPixel(x, y); sum += (0.2126f * ((c shr 16) and 0xFF) + 0.7152f * ((c shr 8) and 0xFF) + 0.0722f * (c and 0xFF)) / 255f; n++; x += 3 }; y += 2 }
+    val l = if (n == 0) 0.5f else sum / n
+    return ((l - 0.35f) / 0.35f).coerceIn(0f, 1f)
 }
 
 /** 1 when the strip behind the dock is bright (snow, daytime sky), else 0, with a soft knee. */

@@ -86,9 +86,9 @@ private fun wifiLevel(context: Context): Int {
 private val ButtonShape = SquircleShape(13.dp, 0.6f)
 
 /**
- * Top-right corner of the home screen: the network state in a glass pill and a glass settings
- * button. The button is the only focusable thing above the dock, so Up from any tile lands on it
- * and Down returns. Fades with the dock when the screen goes idle.
+ * Top-right corner of the home screen: the network state in a glass pill, the info button and the
+ * settings button. The buttons are the only focusable things above the dock, so Up from any tile
+ * lands on them and Down returns. Fades with the dock when the screen goes idle.
  */
 @Composable
 fun TopRight(

@@ -850,7 +850,7 @@
     const h = now.getHours();
     const hour = cycle === "h23" || cycle === "h24" ? h : h % 12 || 12;
     $("tv-time").textContent = `${hour}:${String(now.getMinutes()).padStart(2, "0")}`;
-    $("tv-date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    $("tv-date").textContent = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
     setTimeout(tickClock, 60_000 - (Date.now() % 60_000) + 50);
   }
 

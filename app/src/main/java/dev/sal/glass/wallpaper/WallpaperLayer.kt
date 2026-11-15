@@ -24,12 +24,13 @@ import androidx.tv.material3.Text
 
 /**
  * Full-bleed photo with a slow Ken Burns push-in and a 1.2 s crossfade to the next one. Only
- * graphicsLayer transforms change per frame; nothing is re-decoded or allocated.
+ * graphicsLayer transforms change per frame; nothing is re-decoded or allocated. The photo fading
+ * in is drawn unzoomed, and the engine resets the zoom in the same step as it makes that photo
+ * the current one, so the end of a crossfade is seamless.
  */
 @Composable
 fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifier = Modifier) {
     val fade = remember { Animatable(0f) }
-    val zoom = remember { Animatable(1f) }
     val current = engine.current
     val next = engine.next
 
@@ -37,26 +38,27 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
         if (engine.transitioning) {
             fade.snapTo(0f)
             fade.animateTo(1f, tween(1200, easing = EaseInOut)) { engine.fade = value }
+            // Swaps the photos and puts the fade and the zoom back, all in one step.
             engine.onTransitionDone()
             fade.snapTo(0f)
-            engine.fade = 0f
         }
     }
     // Ken Burns at 4 fps, not 60: a 6 % zoom over a minute moves about a pixel every half second,
     // so stepping every 250 ms looks identical and leaves the GPU idle between steps (the TV would
     // otherwise redraw a full 1080p frame 60 times a second for the whole minute).
     // Keyed on the frame, not its file: a kept test's file changes under a frame that stays up,
-    // and the slow zoom must not jump back for it.
+    // and the slow zoom must not jump back for it. The zoom lives in the engine, which sets it to 1
+    // the moment a new photo takes the screen; this carries on from wherever it is (a changed
+    // interval does not jump it back), and a loop still running for the photo that left stops
+    // before it can write that photo's zoom over the new one's.
     LaunchedEffect(current, kenBurns, engine.intervalMs) {
-        zoom.snapTo(1f)
-        engine.zoom = 1f
-        if (!kenBurns) return@LaunchedEffect
-        val start = System.currentTimeMillis()
+        if (current == null) return@LaunchedEffect
+        if (!kenBurns) { engine.zoom = 1f; return@LaunchedEffect }
         val total = engine.intervalMs.toFloat()
-        while (true) {
+        val start = System.currentTimeMillis() - ((engine.zoom - 1f) / 0.06f * total).toLong()
+        while (engine.current === current) {
             val t = ((System.currentTimeMillis() - start) / total).coerceIn(0f, 1f)
-            zoom.snapTo(1f + 0.06f * t)
-            engine.zoom = zoom.value
+            engine.zoom = 1f + 0.06f * t
             if (t >= 1f) break
             kotlinx.coroutines.delay(250)
         }
@@ -69,7 +71,8 @@ fun WallpaperLayer(engine: WallpaperEngine, kenBurns: Boolean, modifier: Modifie
         current?.let {
             Image(
                 it.imageBitmap, null,
-                Modifier.fillMaxSize().graphicsLayer { scaleX = zoom.value; scaleY = zoom.value },
+                // Read while drawing, so the frame that swaps the photos already has the new zoom.
+                Modifier.fillMaxSize().graphicsLayer { scaleX = engine.zoom; scaleY = engine.zoom },
                 contentScale = ContentScale.Crop,
             )
         }

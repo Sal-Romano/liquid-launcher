@@ -30,6 +30,8 @@ class GlassTextureView(context: Context, registry: GlassPanels) : TextureView(co
         surfaceTextureListener = this
     }
 
+    /** Runs [block] (photo, zoom and mix changes) as one change: no frame is drawn with half of it. */
+    fun scene(block: () -> Unit) = synchronized(renderer.sceneLock) { block() }
     fun setPhotoA(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { renderer.setPhotoA(sharp, deep, light) }
     fun setPhotoB(sharp: Bitmap?, deep: Bitmap?, light: SceneLight?) { renderer.setPhotoB(sharp, deep, light) }
     fun setMix(m: Float) { if (renderer.mix != m) { renderer.mix = m; requestRender() } }

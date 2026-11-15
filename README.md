@@ -13,7 +13,7 @@ Early. Everything below runs on an Android TV emulator; the first run on the TV 
 ## What it does
 
 - Wallpapers from `/sdcard/Pictures/Wallpapers` (push photos over adb): shuffle without repeats, 1.2 s crossfade, slow Ken Burns push-in, skip and pause from the remote.
-- Clock block centred at 43 % of the height, updates on the minute, 12/24 h, three sizes.
+- Clock in the top-left corner, the time over a short date; the network state, info and settings buttons in the top-right one while the dock is up. Updates on the minute, 12/24 h, three sizes. Its soft halo is drawn by hand (a Text's own shadow is cut off at the text's box on the TV), darker over a bright corner (sky, snow), following the photo as it fades in.
 - A dock of up to eight tiles driven by `launcher.json` (apps, intents, actions, folders, with Home Assistant entities reserved). Hold OK on a tile to move or hide it. A focused tile lifts, pivots and shows its name underneath.
 - Hooks: a tile that asks another machine to do something, a GET to a URL that answers when it is done. The Wii tile is one: the Mac mini under the TV opens Dolphin, waits for it, and switches the TV to its HDMI input (`type: hook`, `url`).
 - Folders: a tile that holds other tiles (the default config ships a Games folder for Wii, PS5, Xbox and Luna). It shows its children small, two by two, or one icon of its own (`icon`: a brand key or a package name) when it is really one app in several guises, and opens as its own row in the dock's place; Back returns to it.

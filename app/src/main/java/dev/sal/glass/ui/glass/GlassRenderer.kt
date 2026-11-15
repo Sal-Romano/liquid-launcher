@@ -31,6 +31,12 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
     private var lastB: Pending? = null
     @Volatile var mix = 0f
     @Volatile var zoom = 1f
+    /**
+     * Held while the photos, the zoom and the mix change together ([GlassTextureView.scene]) and
+     * while a frame takes them, so a frame has all of a change or none of it.
+     */
+    val sceneLock = Any()
+    private class Scene(val a: Pending?, val b: Pending?, val mix: Float, val zoom: Float)
     @Volatile var dark = 0f
     @Volatile var refraction = true
 
@@ -48,7 +54,7 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         // Re-upload after a context loss.
-        pendingA = pendingA ?: lastA; pendingB = pendingB ?: lastB
+        synchronized(sceneLock) { pendingA = pendingA ?: lastA; pendingB = pendingB ?: lastB }
     }
 
     fun onSurfaceChanged(w: Int, h: Int) {
@@ -80,8 +86,11 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
     }
 
     private fun drawFrame() {
-        pendingA?.let { p -> p.sharp?.let { upload(tex[0], it, mip = true) }; p.deep?.let { upload(tex[1], it, mip = false) }; lastA = p; pendingA = null }
-        pendingB?.let { p -> p.sharp?.let { upload(tex[2], it, mip = true) }; p.deep?.let { upload(tex[3], it, mip = false) }; lastB = p; pendingB = null }
+        val scene = synchronized(sceneLock) { Scene(pendingA, pendingB, mix, zoom).also { pendingA = null; pendingB = null } }
+        val mix = scene.mix
+        val zoom = scene.zoom
+        scene.a?.let { p -> p.sharp?.let { upload(tex[0], it, mip = true) }; p.deep?.let { upload(tex[1], it, mip = false) }; lastA = p }
+        scene.b?.let { p -> p.sharp?.let { upload(tex[2], it, mip = true) }; p.deep?.let { upload(tex[3], it, mip = false) }; lastB = p }
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         if (lastA?.sharp == null) return
         GLES30.glUseProgram(program)
@@ -110,7 +119,10 @@ class GlassRenderer(private val registry: GlassPanels, private val requestRender
         for (p in registry.snapshot()) {
             if (p.alpha <= 0.005f) continue
             val r = p.rect
-            val margin = 40f + 20f * p.lift   // room for the shadow
+            // Room for the shadow. It leans away from the lamp by up to (4.4 + 7.2 lift) / 0.3 px
+            // and fades out over 18 + 14 lift px, so a lifted panel lit from the side reaches
+            // about 33 + 38 lift px: with less room its far side was cut off in a straight line.
+            val margin = 40f + 40f * p.lift
             quad.clear()
             quad.put(floatArrayOf(r.left - margin, r.top - margin, r.right + margin, r.top - margin, r.left - margin, r.bottom + margin, r.right + margin, r.bottom + margin))
             quad.flip()
