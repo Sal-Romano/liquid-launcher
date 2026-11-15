@@ -5,6 +5,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,27 +21,34 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -116,13 +124,18 @@ fun NowPlayingCard(
                     icon != null -> Image(icon, null, Modifier.size(48.dp))
                 }
             }
-            Spacer(Modifier.width(14.dp))
+            // 6 dp here and the lines' own Inset make the usual 14 dp from the art; the inset is where
+            // a scrolling title fades out on the left.
+            Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f, fill = false)) {
-                Text(t.title, color = Color.White, style = Title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                MarqueeTitle(t.title)
                 if (t.artist.isNotEmpty()) {
-                    Text(t.artist, color = Color.White.copy(alpha = 0.85f), style = Sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        t.artist, Modifier.padding(start = Inset), color = Color.White.copy(alpha = 0.85f), style = Sub,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(start = Inset, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     PlayingGlyph(t.playing, Modifier.size(11.dp))
                     Spacer(Modifier.width(7.dp))
                     Text(
@@ -135,6 +148,47 @@ fun NowPlayingCard(
         }
     }
 }
+
+/**
+ * The title on one line, starting after [Inset]. One that fits sits still. A longer one scrolls in
+ * place (a marquee) at a reading pace, pausing at its start each time round, and fades out toward
+ * both edges of its slot instead of being cut off; the left fade lies over the inset, so at rest no
+ * letter is faded. The marquee draws in the draw phase only: nothing recomposes while it moves.
+ */
+@Composable
+private fun MarqueeTitle(title: String) {
+    var slot by remember { mutableIntStateOf(0) }
+    var text by remember(title) { mutableIntStateOf(0) }
+    val inset = with(LocalDensity.current) { Inset.roundToPx() }
+    val scrolls = slot > 0 && text + inset > slot
+    Text(
+        title,
+        Modifier
+            .onSizeChanged { slot = it.width }
+            .then(if (scrolls) Modifier.fadeEdges(Inset, 18.dp) else Modifier)
+            .basicMarquee(iterations = Int.MAX_VALUE, repeatDelayMillis = 2_000, initialDelayMillis = 1_500)
+            .padding(start = Inset),
+        color = Color.White, style = Title, maxLines = 1, softWrap = false,
+        onTextLayout = { text = it.size.width },
+    )
+}
+
+/** Fades the content out toward its edges, over [start] on the left and [end] on the right. */
+private fun Modifier.fadeEdges(start: Dp, end: Dp) = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val w = size.width
+        drawRect(
+            Brush.horizontalGradient(
+                0f to Color.Transparent,
+                start.toPx() / w to Color.Black,
+                1f - end.toPx() / w to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
 
 /** Three bars of a level meter while it plays (still, so the home screen never redraws for it); two for paused. */
 @Composable
@@ -163,4 +217,6 @@ private val Title = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeigh
 private val Sub = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 14.sp, shadow = Lift)
 private val Small = TextStyle(fontFamily = GlassFonts.ui, fontWeight = FontWeight.Medium, fontSize = 12.sp, shadow = Lift)
 private val CardShape = SquircleShape(18.dp, 0.6f)
+/** Where the lines start inside their column; a scrolling title fades out over it. */
+private val Inset = 8.dp
 private val ArtShape = RoundedCornerShape(10.dp)
