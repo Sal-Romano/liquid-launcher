@@ -100,6 +100,14 @@ Setup, as done on the Hisense's Mac mini (VOXCON, 192.168.1.58) on 2026-11-13:
   started over when it shows its game list (above), unless someone is using the Mac.
 - adb (platform-tools) in ~/Library/Android, with the TV-authorised key copied from the laptop
   into ~/.android so the TV never asks.
+- No notifications on the TV (2026-11-14): banners and alerts are off for every app. Each app
+  entry in `com.apple.ncprefs` keeps its style in bits 3 to 5 of `flags` (0 none, 1 banners,
+  2 alerts); they were cleared through `defaults export`/`defaults import`, then `killall
+  usernoted NotificationCenter`. The old settings are in `ncprefs.before-*.plist` next to
+  `wii.py`. Alerts are the kind that stay until clicked: two Apple Account follow-ups (new iCloud
+  terms, review the phone number) sat on screen that way, and come back until they are dealt with
+  in System Settings. Notifications still collect in Notification Center, sounds were not
+  changed, and an app that notifies for the first time later gets macOS's default, banners.
 - Appliance power settings: `pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 autorestart 1 powernap 0`,
   screensaver off, so it is always there and its display never goes dark. `/play` also nudges it
   awake first (`caffeinate -u`) in case it did.
