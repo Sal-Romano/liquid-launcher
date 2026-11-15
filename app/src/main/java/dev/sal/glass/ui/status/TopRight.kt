@@ -87,8 +87,8 @@ private val ButtonShape = SquircleShape(13.dp, 0.6f)
 
 /**
  * Top-right corner of the home screen: the network state in a glass pill, the info button and the
- * settings button. The buttons are the only focusable things above the dock, so Up from any tile
- * lands on them and Down returns. Fades with the dock when the screen goes idle.
+ * settings button. Up from a tile lands on them, or on the now-playing card in the top middle when
+ * one is up and nearer, and Down returns. Fades with the dock when the screen goes idle.
  */
 @Composable
 fun TopRight(

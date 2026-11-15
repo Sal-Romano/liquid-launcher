@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -57,6 +58,8 @@ import dev.sal.glass.ui.overlay.DropViewer
 import dev.sal.glass.ui.dock.AppIcons
 import dev.sal.glass.ui.dock.Dock
 import dev.sal.glass.ui.dock.FolderRow
+import dev.sal.glass.media.NowPlaying
+import dev.sal.glass.ui.media.NowPlayingCard
 import dev.sal.glass.ui.status.TopRight
 import dev.sal.glass.ui.glass.GlassBackdrop
 import dev.sal.glass.ui.glass.GlassLayer
@@ -95,6 +98,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     var contextTile by remember { mutableStateOf<Tile?>(null) }
     var openFolder by remember { mutableStateOf<FolderTile?>(null) }
     var topFocused by remember { mutableStateOf(false) }
+    var nowFocused by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     // Something still under way (a hook tile waiting for its answer): shown until it is done,
     // under any passing toast.
@@ -118,6 +122,18 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { Sounds.init(context) }
+    // What is playing, for the card under the clock. Started again on every wake (below), in case
+    // notification access was switched on since; it does nothing once it follows the sessions.
+    DisposableEffect(Unit) { NowPlaying.start(context); onDispose { NowPlaying.stop() } }
+    // The card leaving while it has focus (the music stopped) hands focus back to the dock.
+    val playingNow = NowPlaying.track
+    LaunchedEffect(playingNow == null) { if (playingNow == null && nowFocused) runCatching { dockFocus.requestFocus() } }
+    // "Spotify · Kyle": the app's own name and, for the two Spotifys, whose copy it is (launcher.json labels).
+    fun source(pkg: String): String {
+        val pm = context.packageManager
+        val name = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrNull() ?: pkg.substringAfterLast('.')
+        return listOfNotNull(name, config.labels[pkg]).distinct().joinToString(" · ")
+    }
     // A photo frame is not inactivity: hold the screen on while we are in front, for as long as
     // configured since the last key. Fire TV's own timeout (21 min on the Hisense) resumes after.
     LaunchedEffect(config.awake.minutes, lastKeyAt) {
@@ -147,7 +163,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     LaunchedEffect(config.wallpaper.intervalSec) { engine.intervalMs = config.wallpaper.intervalSec * 1000L; engine.start() }
     // The phone link follows launcher.json's relay, or the build's own.
     LaunchedEffect(config.phone.server) { phone.start(config.phone.server ?: BuildConfig.PHONE_SERVER) }
-    LaunchedEffect(wakeSignal) { engine.rescan(); AppIcons.forgetInstalled(); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
+    LaunchedEffect(wakeSignal) { engine.rescan(); AppIcons.forgetInstalled(); NowPlaying.start(context); dockVisible = true; lastKeyAt = System.currentTimeMillis() }
     // Home closes whatever is open (a sheet, a screen, the info card, a folder): back to the photo and the dock.
     LaunchedEffect(homeSignal) {
         if (homeSignal == 0L) return@LaunchedEffect
@@ -275,9 +291,16 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                     when (e.key) {
                         Key.Back -> { if (!wasIdle) dockVisible = false; true }
                         Key.Menu -> { overlay = Overlay.Settings; true }
-                        // Down from the dock opens All apps; from the settings button it just comes back down.
-                        Key.DirectionDown -> if (topFocused) false else { overlay = Overlay.AllApps; true }
-                        Key.MediaPlayPause -> { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed"; true }
+                        // Down from the dock opens All apps; from the settings button or the now-playing
+                        // card it just comes back down.
+                        Key.DirectionDown -> if (topFocused || nowFocused) false else { overlay = Overlay.AllApps; true }
+                        // Play/Pause is the music's while the now-playing card is up, the slideshow's otherwise.
+                        Key.MediaPlayPause -> {
+                            val t = NowPlaying.track
+                            if (t != null) NowPlaying.playPause(t)
+                            else { engine.togglePause(); toast = if (engine.paused) "Slideshow paused" else "Slideshow resumed" }
+                            true
+                        }
                         Key.MediaFastForward, Key.MediaNext -> { engine.skip(); true }
                         else -> wasIdle // a wake press is consumed; the next one navigates
                     }
@@ -302,6 +325,16 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                 glow = { clockGlow.value },
                 alpha = { clockAlpha },
                 modifier = Modifier.align(Alignment.TopStart).padding(top = 18.dp, start = 40.dp),
+            )
+            // What is playing, at the top in the middle, level with the buttons on the right.
+            NowPlayingCard(
+                playingNow,
+                visible = chrome,
+                source = ::source,
+                onOpen = { t -> Sounds.tap(); if (!NowPlaying.open(context, t)) toast = "Could not open ${source(t.packageName)}" },
+                onFocus = { nowFocused = it },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 30.dp),
+                canFocus = overlay == Overlay.None || overlay == Overlay.Folder,
             )
             // Network state, info and the settings button, top right, inside the overscan margin.
             TopRight(

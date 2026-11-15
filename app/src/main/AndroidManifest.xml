@@ -67,6 +67,19 @@
             </intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/volume_service" />
         </service>
+
+        <!-- What is playing, for the card under the clock: Android shares the apps' media sessions
+             only with an enabled notification listener. Reads no notifications. Enabled over adb
+             (see MediaListener); never on by itself. -->
+        <service
+            android:name=".media.MediaListener"
+            android:exported="true"
+            android:label="Glass now playing"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
