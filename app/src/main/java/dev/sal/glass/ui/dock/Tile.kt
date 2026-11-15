@@ -40,18 +40,21 @@ import dev.sal.glass.ui.glass.GlassVariant
 import dev.sal.glass.ui.glass.TileShape
 import dev.sal.glass.ui.glass.glass
 import dev.sal.glass.ui.theme.GlassFonts
+import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /** Remembers which dock tile had focus last, so the next one knows which way focus came from. */
 class FocusTrail { var last: Int = -1 }
 
 /**
  * One 84 dp glass squircle. On focus it lifts (scale 1.12, -6 dp) with a critically damped
- * spring and pivots about its vertical axis: it is kicked [NodDegrees] away from the side focus
- * came from and swings, with a little overshoot, to its resting angle, which turns it toward the
- * middle of the screen by up to [RestDegrees] at the ends of the row (a tile on the left shows
- * you its right edge receding, one on the right the opposite, the centre one faces you square).
- * The glass slab is drawn in the same perspective, so the reflection sweeps across the pane as it
- * turns. After the lift settles its name fades in underneath, plain text with a shadow. The
+ * spring and pivots about its vertical axis: it is kicked away from the side focus came from and
+ * swings, with a little overshoot, to its resting angle, which turns it toward the middle of the
+ * screen by up to [RestDegrees] at the ends of the row (a tile on the left shows you its right
+ * edge receding, one on the right the opposite, the centre one faces you square). No two landings
+ * are alike: the kick is a different share of [NodDegrees] each time, and the pane also tips up or
+ * down by up to [TipDegrees] and swings level. The glass slab is drawn in the same perspective, so
+ * the reflection sweeps across the pane as it turns. After the lift settles its name fades in underneath, plain text with a shadow. The
  * column is always exactly [TileColumnWidth] wide: the label is laid out unbounded and centred
  * under the column, overflowing it on both sides when the name is wider than the tile, so the row
  * never reflows when focus moves.
@@ -78,14 +81,25 @@ fun Tile(
     val middle = (count - 1) / 2f
     val restTilt = if (count > 1) (middle - index) / middle * RestDegrees else 0f
     val turn = remember { Animatable(0f) }
+    // About the horizontal axis: the few degrees up or down that make each landing its own.
+    val tip = remember { Animatable(0f) }
     LaunchedEffect(focused) {
         if (focused) {
-            if (cameFrom != 0f) turn.snapTo(restTilt + cameFrom * NodDegrees)
-            // A quick, slightly underdamped swing (about half a second) that overshoots once
-            // before it settles. The TV draws it at full rate; the emulator cannot.
-            turn.animateTo(restTilt, spring(dampingRatio = 0.5f, stiffness = 300f))
+            // Never the same landing twice. The kick away from where focus came from is 60 to 125 %
+            // of NodDegrees (a gentler one, either way, when focus did not come along the row), and
+            // the pane tips up or down by a third to all of TipDegrees. Both swing home together: a
+            // quick, slightly underdamped spring (about half a second) that overshoots once before
+            // it settles. The TV draws it at full rate; the emulator cannot.
+            val side = if (cameFrom != 0f) cameFrom else if (Random.nextBoolean()) 0.4f else -0.4f
+            turn.snapTo(restTilt + side * NodDegrees * between(0.6f, 1.25f))
+            tip.snapTo((if (Random.nextBoolean()) 1f else -1f) * TipDegrees * between(0.35f, 1f))
+            val swing = spring<Float>(dampingRatio = 0.5f, stiffness = 300f)
+            launch { tip.animateTo(0f, swing) }
+            turn.animateTo(restTilt, swing)
         } else {
-            turn.animateTo(0f, spring(dampingRatio = 1f, stiffness = 420f))
+            val settle = spring<Float>(dampingRatio = 1f, stiffness = 420f)
+            launch { tip.animateTo(0f, settle) }
+            turn.animateTo(0f, settle)
         }
     }
 
@@ -97,7 +111,7 @@ fun Tile(
                 .size(84.dp)
                 .glass(
                     TileShape, GlassVariant.Tile, focused = focused, lift = { lift.value }, alpha = glassAlpha,
-                    liftScale = 0.12f, liftPx = liftPx, tiltY = { turn.value },
+                    liftScale = 0.12f, liftPx = liftPx, tiltX = { tip.value }, tiltY = { turn.value },
                 )
                 .onFocusChanged {
                     if (it.isFocused) Sounds.tick()
@@ -149,8 +163,17 @@ val TileColumnWidth = 84.dp
 /** The label may be this wide, centred under its 84 dp column, without reflowing the row. */
 val LabelSlotWidth = 220.dp
 
-/** The kick when focus lands: degrees about the vertical axis, away from where focus came from. */
+/**
+ * The kick when focus lands: degrees about the vertical axis, away from where focus came from.
+ * Each landing takes a different share of it, 60 to 125 %.
+ */
 const val NodDegrees = 26f
+
+/** The most a tile tips up or down as it lands (about its horizontal axis); at least a third of it. */
+const val TipDegrees = 10f
+
+/** A uniformly random value from [from] to [to]. */
+private fun between(from: Float, to: Float) = from + (to - from) * Random.nextFloat()
 
 /** The resting turn toward the middle of the screen for a focused tile at either end of the row. */
 const val RestDegrees = 20f
