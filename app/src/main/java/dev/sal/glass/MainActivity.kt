@@ -22,6 +22,7 @@ import dev.sal.glass.drop.DropServer
 import dev.sal.glass.phone.Phone
 import dev.sal.glass.phone.PhoneLink
 import dev.sal.glass.ui.HomeScreen
+import dev.sal.glass.volume.HomeCurtainHost
 import dev.sal.glass.wallpaper.WallpaperEngine
 import java.io.File
 
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
             addDataScheme("package")
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
         setContent { HomeScreen(engine, store, phone, wake, home) }
+        HomeCurtainHost.photo = { engine.current?.image?.let { it to engine.zoom } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -96,16 +98,28 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         wake = System.currentTimeMillis()
         Phone.foreground = true
+        engine.back()
         // Back on the home screen: if the link dropped while we were away, try again now.
         phone.nudge()
     }
 
+    /** Shown and focused again: once a frame of ours has really gone out, the Home curtain can lift. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) return
+        val decor = window.decorView
+        decor.viewTreeObserver.registerFrameCommitCallback { HomeCurtainHost.curtain?.reveal() }
+        decor.invalidate()
+    }
+
     override fun onPause() {
         Phone.foreground = false
+        engine.leave()
         super.onPause()
     }
 
     override fun onDestroy() {
+        HomeCurtainHost.photo = null
         unregisterReceiver(packages)
         drop.stop()
         phone.stop()

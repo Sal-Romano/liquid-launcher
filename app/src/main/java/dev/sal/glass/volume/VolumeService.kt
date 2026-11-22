@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import dev.sal.glass.config.ConfigStore
+import dev.sal.glass.phone.Phone
 import kotlin.math.ceil
 
 /**
@@ -35,6 +36,7 @@ import kotlin.math.ceil
 class VolumeService : AccessibilityService() {
     private lateinit var audio: AudioManager
     private var hud: VolumeHud? = null
+    private var homeKeys: HomeKeyWatch? = null
     /** The index we are walking the soundbar to, -1 when settled; the direction; when it was set. */
     private var target = -1
     private var targetUp = false
@@ -68,6 +70,10 @@ class VolumeService : AccessibilityService() {
         System.setProperty("http.keepAlive", "false") // see tapSoundbar
         audio = getSystemService(AudioManager::class.java)
         hud = VolumeHud(this)
+        StartCoverHost.cover = StartCover(this)
+        HomeCurtainHost.curtain = HomeCurtain(this)
+        homeKeys?.stop()
+        homeKeys = HomeKeyWatch { if (!Phone.foreground) HomeCurtainHost.curtain?.show("home") }.also { it.start() }
         registerReceiver(volumeChanged, IntentFilter().apply { addAction("android.media.VOLUME_CHANGED_ACTION"); addAction("android.media.STREAM_MUTE_CHANGED_ACTION") })
         Log.i("Glass", "volume service connected")
     }
@@ -216,6 +222,11 @@ class VolumeService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        StartCoverHost.cover?.remove()
+        StartCoverHost.cover = null
+        HomeCurtainHost.curtain?.remove()
+        HomeCurtainHost.curtain = null
+        homeKeys?.stop()
         handler.removeCallbacks(nudgeAgain)
         runCatching { unregisterReceiver(volumeChanged) }
         hud?.dismiss()

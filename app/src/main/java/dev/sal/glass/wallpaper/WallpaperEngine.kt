@@ -53,6 +53,8 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     /** 0 = showing [current]; 1 = [next] fully in. The layer animates this and calls [onTransitionDone]. */
     var transitioning by mutableStateOf(false); private set
     var paused by mutableStateOf(false); private set
+    /** The launcher is not in front: the photo stays, so Home comes back to the one that was left. */
+    private var away = false
     var intervalMs by mutableStateOf(60_000L)
     var empty by mutableStateOf(false); private set
     /** Every photo in the rotation, newest first: the Wallpapers screen's grid. */
@@ -135,6 +137,13 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
     }
 
     fun togglePause() { paused = !paused }
+
+    fun leave() { away = true }
+
+    /** Back in front: this photo gets its full time on screen. */
+    fun back() {
+        if (away) { away = false; restartTicker() }
+    }
 
     /** Called on every Home press: new files pushed over adb go to the front of the queue. */
     fun rescan() {
@@ -327,7 +336,7 @@ class WallpaperEngine(private val appContext: Context) : ViewModel() {
         ticker = viewModelScope.launch {
             while (true) {
                 delay(intervalMs)
-                if (!paused && preview == null && !held) advance()
+                if (!paused && !away && preview == null && !held) advance()
             }
         }
     }

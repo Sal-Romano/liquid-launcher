@@ -50,6 +50,8 @@ data class HookTile(
     override val label: String? = null,
     /** A bundled brand mark to draw. */
     val icon: String? = null,
+    /** Keep a full-screen "Starting…" over the TV until the hook answers: its input may show no signal until then. */
+    val cover: Boolean = false,
 ) : Tile
 
 @Serializable

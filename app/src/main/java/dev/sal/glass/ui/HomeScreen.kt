@@ -38,6 +38,7 @@ import dev.sal.glass.config.ClockSize
 import dev.sal.glass.config.ConfigStore
 import dev.sal.glass.config.FolderTile
 import dev.sal.glass.config.HookTile
+import dev.sal.glass.volume.StartCoverHost
 import dev.sal.glass.config.GlassMode
 import dev.sal.glass.config.HourFormat
 import dev.sal.glass.config.IntentTile
@@ -97,6 +98,11 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     var overlay by remember { mutableStateOf(Overlay.None) }
     var contextTile by remember { mutableStateOf<Tile?>(null) }
     var openFolder by remember { mutableStateOf<FolderTile?>(null) }
+    // The tile last launched and the folder it was in: Home comes back to exactly that.
+    var left by remember { mutableStateOf<Pair<String, FolderTile?>?>(null) }
+    var folderFocus by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var lastDockTile by remember { mutableStateOf<String?>(null) }
+    var restoredAt by remember { mutableLongStateOf(0L) }
     var topFocused by remember { mutableStateOf(false) }
     var nowFocused by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -167,8 +173,25 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
     // Home closes whatever is open (a sheet, a screen, the info card, a folder): back to the photo and the dock.
     LaunchedEffect(homeSignal) {
         if (homeSignal == 0L) return@LaunchedEffect
-        overlay = Overlay.None
-        openFolder = null
+        val back = left
+        left = null
+        // Home on Fire can redirect twice for one press, up to about 2 s apart: the second must not
+        // undo what the first put back.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (back == null && now - restoredAt < 4_000) return@LaunchedEffect
+        if (back != null) restoredAt = now
+        val folder = back?.second
+        if (folder != null) {
+            openFolder = folder
+            overlay = Overlay.Folder
+            folderFocus = back.first to homeSignal
+        } else {
+            val wasOpen = openFolder?.id
+            overlay = Overlay.None
+            openFolder = null
+            // Never left to fall on whatever is first on screen.
+            pendingDockFocus = back?.first ?: wasOpen ?: lastDockTile ?: ""
+        }
     }
     // Idle timer: the dock fades after idleHideSec without a key press, overlays excepted.
     LaunchedEffect(lastKeyAt, overlay, config.dock.idleHideSec) {
@@ -222,6 +245,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
 
     fun launch(tile: Tile) {
         Sounds.tap()
+        if (tile is AppTile || tile is IntentTile || tile is HookTile) left = tile.id to openFolder
         when (tile) {
             is AppTile -> {
                 if (!AppIcons.isInstalled(context, tile.packageName)) { toast = "Install ${tile.label ?: tile.packageName} from the Amazon Appstore"; return }
@@ -241,17 +265,31 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                 Action.None -> Unit
                 Action.Wallpapers -> overlay = Overlay.Wallpapers
             }
-            is FolderTile -> { openFolder = tile; overlay = Overlay.Folder }
+            is FolderTile -> { folderFocus = null; openFolder = tile; overlay = Overlay.Folder }
             is HookTile -> {
                 // The other end answers when it is done (Dolphin up, TV switched), so this can take
                 // a while: say so until then, and ignore a second press meanwhile.
                 if (pending != null) return
                 val name = tile.label ?: "that"
-                pending = "Starting $name…"
+                val cover = if (tile.cover) StartCoverHost.cover else null
+                // The cover says it; the toast is only for a tile without one.
+                pending = if (cover != null) "" else "Starting $name…"
+                cover?.show(engine.current?.thumb, "Starting $name…", tile.icon, engine.current?.light)
                 scope.launch(Dispatchers.IO) {
+                    if (cover != null) delay(240) // covered before the TV changes input
                     val problem = callHook(tile.url, name)
                     Log.i("Glass", "hook ${tile.id}: ${problem ?: "ok"}")
-                    withContext(Dispatchers.Main) { pending = null; toast = problem }
+                    withContext(Dispatchers.Main) {
+                        pending = null
+                        if (problem != null) left = null // it never left the launcher
+                        if (problem != null && cover != null) {
+                            val (title, hint) = hookProblem(name, problem)
+                            cover.fail(title, hint)
+                        } else {
+                            toast = problem
+                            cover?.hide()
+                        }
+                    }
                 }
             }
             else -> toast = "Coming soon"
@@ -272,6 +310,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                 .onPreviewKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     Sounds.keyAt = android.os.SystemClock.uptimeMillis()
+                    left = null // moved on here: a later Home is an ordinary Home
                     val wasIdle = !dockVisible
                     wake()
                     // The info card is a label on the photo and never takes the remote, so it does not
@@ -353,12 +392,14 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
                     onContextMenu = { contextTile = it; overlay = Overlay.Context },
                     focusRequester = dockFocus,
                     tileFocus = tileFocus,
+                    onTileFocused = { lastDockTile = it },
                     // The tile's label now sits under it inside the column (26 dp), so the row
                     // itself moves down to keep the tiles where they were.
                     modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
                 )
                 FolderRow(
                     folder = openFolder,
+                    focus = folderFocus,
                     onLaunch = ::launch,
                     onDismiss = { val id = openFolder?.id; openFolder = null; overlay = Overlay.None; pendingDockFocus = id },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 22.dp),
@@ -398,7 +439,7 @@ fun HomeScreen(engine: WallpaperEngine, store: ConfigStore, phone: PhoneLink, wa
             )
             SettingsSheet(overlay == Overlay.Settings, settingsRows(store, engine) { overlay = Overlay.Wallpapers }, BuildConfig.VERSION_NAME) { overlay = Overlay.None }
             DropViewer(Drop.incoming, Drop.serial, overlay == Overlay.Drop) { overlay = Overlay.None }
-            Toast(toast ?: pending, sticky = toast == null && pending != null, solid = !chrome) { toast = null }
+            Toast(toast ?: pending?.ifEmpty { null }, sticky = toast == null && !pending.isNullOrEmpty(), solid = !chrome) { toast = null }
         }
     }
 }

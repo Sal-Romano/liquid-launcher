@@ -53,3 +53,19 @@ fun callHook(url: String, name: String): String? {
         c.disconnect()
     }
 }
+
+/** What [callHook] said, as a title and what to do about it, for the start cover. */
+fun hookProblem(name: String, problem: String): Pair<String, String> {
+    val p = problem.lowercase()
+    return when {
+        "is off" in p -> "Your $name is off" to "Make sure it's on or in Rest Mode"
+        "wake" in p -> "$name didn't wake up" to "Make sure it's on or in Rest Mode"
+        "couldn't reach" in p -> "Can't reach the Mac mini" to "Make sure it's on and connected"
+        "starting up" in p -> "Mac mini is starting up" to "Try again in a moment"
+        "busy" in p -> "Mac mini is busy" to "Try again in a moment"
+        "switch the tv" in p -> "Couldn't switch the TV" to "Try again in a moment"
+        "too long" in p -> "$name took too long" to "Try again in a moment"
+        "dolphin" in p || "didn't come up" in p -> "$name didn't start" to "Try again in a moment"
+        else -> "$name didn't start" to "Try again in a moment"
+    }
+}

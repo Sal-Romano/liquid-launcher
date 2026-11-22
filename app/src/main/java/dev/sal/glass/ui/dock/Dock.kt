@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -43,6 +44,7 @@ fun Dock(
     focusRequester: FocusRequester,
     /** One requester per tile id, so the home screen can put focus back on a given tile. */
     tileFocus: MutableMap<String, FocusRequester>,
+    onTileFocused: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -77,7 +79,9 @@ fun Dock(
                     dimmed = !installed,
                     onClick = { onLaunch(tile) },
                     onLongClick = { onContextMenu(tile) },
-                    modifier = Modifier.focusRequester(tileFocus.getOrPut(tile.id) { FocusRequester() }),
+                    modifier = Modifier
+                        .focusRequester(tileFocus.getOrPut(tile.id) { FocusRequester() })
+                        .onFocusChanged { if (it.hasFocus) onTileFocused(tile.id) },
                     glassAlpha = { alpha },
                     index = index,
                     count = tiles.size,

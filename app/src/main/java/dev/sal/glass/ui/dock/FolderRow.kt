@@ -47,15 +47,27 @@ private val RowEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
  * tiles lift, turn and label themselves exactly like dock tiles.
  */
 @Composable
-fun FolderRow(folder: FolderTile?, onLaunch: (Tile) -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun FolderRow(
+    folder: FolderTile?,
+    /** A child to select (its id) instead of the first; the number makes a repeat request count. */
+    focus: Pair<String, Long>? = null,
+    onLaunch: (Tile) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val visible = folder != null
     // Keep the last folder while the row animates out.
     var shown by remember { mutableStateOf(folder) }
     if (folder != null) shown = folder
-    val first = remember { FocusRequester() }
+    val requesters = remember(shown?.id) { mutableMapOf<String, FocusRequester>() }
     val trail = remember(shown?.id) { FocusTrail() }
-    LaunchedEffect(visible) { if (visible) { delay(80); runCatching { first.requestFocus() } } }
+    LaunchedEffect(visible, focus) {
+        if (!visible) return@LaunchedEffect
+        delay(80)
+        val target = focus?.first?.let { requesters[it] } ?: shown?.children?.firstOrNull()?.let { requesters[it.id] }
+        runCatching { target?.requestFocus() }
+    }
     AnimatedVisibility(
         visible,
         modifier = modifier,
@@ -81,7 +93,7 @@ fun FolderRow(folder: FolderTile?, onLaunch: (Tile) -> Unit, onDismiss: () -> Un
                             dimmed = !installed,
                             onClick = { onLaunch(child) },
                             onLongClick = {},
-                            modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                            modifier = Modifier.focusRequester(requesters.getOrPut(child.id) { FocusRequester() }),
                             index = i,
                             count = f.children.size,
                             trail = trail,

@@ -23,6 +23,8 @@
     <!-- The drop endpoint: a small HTTP server on the home network that receives files to show;
          and the phone link, a WebSocket to the relay in cloud/ that delivers wallpapers. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Granted over adb: the moment Home is pressed, which Fire OS tells no app (HomeKeyWatch). -->
+    <uses-permission android:name="android.permission.READ_LOGS" />
 
     <application
         android:label="@string/app_name"
