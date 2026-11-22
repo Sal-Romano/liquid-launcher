@@ -7,7 +7,7 @@ and hands it to the launcher as files/photo-info-seed.json; the launcher merges 
 start, only filling gaps, and deletes it. Photos without GPS still get a place: the launcher looks
 their file names up ("aoraki-mount-cook").
 
-    tools/photo-info/seed.py [originals dir] [--tv 192.168.1.152:5555] [--dry-run]
+    tools/photo-info/seed.py [originals dir] [--tv 192.168.1.71:5555] [--dry-run]
 
 Matches originals to the TV's photos by file name. Needs Pillow and adb; the launcher is a debug
 build, so run-as can write its files.
@@ -55,7 +55,7 @@ def info_of(path):
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("originals", nargs="?", default=os.path.expanduser("~/Developer/louisville/wallpapers/originals"))
-    p.add_argument("--tv", default="192.168.1.152:5555")
+    p.add_argument("--tv", default="192.168.1.71:5555")
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
 

@@ -36,15 +36,21 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 CFG = {
-    "tv": "192.168.1.152:5555",
+    "tv": "192.168.1.71:5555",
     "hdmi_key": 244,                       # KEYCODE_TV_INPUT_HDMI_2
     "hdmi_input": "HdmiInputService/HW3",  # HDMI 2, as the TV's dumpsys tv_input names it
+    "ps5_key": 245,                        # KEYCODE_TV_INPUT_HDMI_3: the PS5
+    "ps5": "192.168.1.67",                 # answers on UDP 9302: 200 awake, 620 in Rest Mode
+    "ps5_input": "HdmiInputService/HW4",   # HDMI 3, as the TV's dumpsys tv_input names it
+    "picture_settle_s": 1.3,               # video with no change for this long counts as a picture
+    "ps5_within_s": 26.0,                  # /ps5 gives up by then (the launcher waits 30)
     "port": 8766,
     "app": "Dolphin",
     # Without wii-channels: batch mode (no Dolphin UI), fullscreen whatever the GUI says, no mouse
@@ -487,8 +493,11 @@ def _play(t0, up_by, switch_by):
     if time.time() >= switch_by:  # the launcher may have given up: never switch after that
         log("play: too slow, not switching the TV")
         return {"ok": False, "error": "it took too long, try again"}
+    since = tv_clock()
     if not tv_key(CFG["hdmi_key"], until=switch_by):
         return {"ok": False, "error": "couldn't switch the TV"}
+    # The launcher's cover stays up until this answers, so answer once the TV has the picture.
+    tv_picture(CFG["hdmi_input"], since, time.time() + 6)
     return {"ok": True, "started": started, "switched": True,
             "took_ms": int((time.time() - t0) * 1000)}
 
@@ -581,11 +590,88 @@ def status():
             "bar_where": s.get("bar_where")}
 
 
+def ps5_awake():
+    """True when the PS5 is on, False in Rest Mode, None when it does not answer."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as u:
+        u.settimeout(0.8)
+        try:
+            u.sendto(b"SRCH * HTTP/1.1\ndevice-discovery-protocol-version:00030010\n", (CFG["ps5"], 9302))
+            line = u.recv(2048).split(b"\n", 1)[0]
+        except OSError:
+            return None
+    return True if b" 200 " in line else False if b" 620 " in line else None
+
+
+def tv_clock():
+    """The TV's time, in the form logcat -T takes."""
+    return adb("shell", "date '+%m-%d %H:%M:%S.000'", timeout=3).stdout.strip()
+
+
+def picture_events(out, hdmi_input):
+    """The TV's log as a list of signal changes on that input: True for video, False for none."""
+    events = []
+    for line in out.splitlines():
+        if "checkVideoAvaliable" in line:  # (the TV's spelling)
+            events.append("notifyVideoAvailable" in line)
+        elif "onVideoAvailable" in line and hdmi_input in line:
+            events.append(True)
+        elif "onVideoUnavailable" in line and hdmi_input in line:
+            events.append(False)
+    return events
+
+
+def tv_picture(hdmi_input, since, limit):
+    """Wait until the TV has had video on that input, with no change at all, for a moment: HDMI
+    drops and comes back while a source settles (available, unstable, available within 200 ms),
+    and lifting the cover at the first sign of video shows that. False if it never settled."""
+    seen, changed = -1, time.time()
+    while time.time() < limit:
+        out = adb("shell", f"logcat -d -v time -T '{since}' -s IPS-PassthroughPlayerTvInputCallback:I"
+                  " HdmiInputService:I; true", timeout=4, until=limit).stdout
+        events = picture_events(out, hdmi_input)
+        if len(events) != seen:
+            seen, changed = len(events), time.time()
+        if events and events[-1] and time.time() - changed >= CFG["picture_settle_s"]:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def ps5():
+    """The launcher's PS5 tile, which keeps a full-screen cover up until this answers. Selecting
+    the input is what wakes a resting PS5 (CEC), and the TV shows "no signal" until its picture
+    arrives about 12 s later, so this answers when the TV reports video on that input. A PS5 that
+    is fully off answers nothing on the network and cannot be woken: the TV stays where it is.
+    The Wii's watcher pauses Dolphin when the TV leaves this Mac, as for any other input."""
+    start = time.time()
+    until = start + CFG["ps5_within_s"]
+    awake = ps5_awake()
+    for _ in range(2):  # UDP: a lost packet is not a PS5 that is off
+        if awake is not None:
+            break
+        awake = ps5_awake()
+    if awake is None:
+        log("ps5 is off or not on the network")
+        return {"ok": False, "error": "the PS5 is off"}
+    since = tv_clock()
+    if not tv_key(CFG["ps5_key"], until=start + 6):
+        return {"ok": False, "error": "couldn't switch the TV"}
+    if tv_picture(CFG["ps5_input"], since, min(until, time.time() + 8) if awake else until):
+        log(f"ps5 picture after {time.time() - start:.1f}s")
+        return {"ok": True}
+    if awake or ps5_awake() is True:
+        log("ps5 is on, no video report from the TV")
+        return {"ok": True}
+    log("ps5 did not wake")
+    adb("shell", "am", "start", "-n", "dev.sal.glass/.MainActivity", timeout=4)
+    return {"ok": False, "error": "the PS5 didn't wake up"}
+
+
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         try:
-            handler = {"/play": play, "/home": home, "/quit": quit_, "/status": status}.get(path)
+            handler = {"/play": play, "/ps5": ps5, "/home": home, "/quit": quit_, "/status": status}.get(path)
             if handler is None:
                 self.send_response(404)
                 self.end_headers()
